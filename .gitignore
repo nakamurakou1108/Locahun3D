@@ -1,0 +1,36 @@
+# ── Large data (3DGS scan files) ─────────────────────────────────────────
+# PLY files are typically hundreds of MB; never commit to git
+*.ply
+*.splat
+*.ksplat
+*.spz
+3DGS/
+
+# Project ZIP backups (also huge — contain embedded PLY data)
+*.zip
+
+# ── Transient diagnostic outputs (from __diag_*.py + ?diag=1 mode) ───────
+__diag.log
+__screen*.png
+__crop*.png
+__crop2*.png
+__splat_*.png
+__paged_view.png
+__lod1_view.png
+__baseline_idle.png
+
+# ── OS / editor cruft ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+__pycache__/
+*.pyc
+
+# ── Dropbox conflict files ───────────────────────────────────────────────
+*conflicted*
+*Conflict*
