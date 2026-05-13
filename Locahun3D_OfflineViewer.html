@@ -7531,20 +7531,22 @@ async function _arEnter(){
   }
   // Request rear-facing camera. `ideal:'environment'` lets browsers without
   // a back camera (e.g. desktops with only a webcam) still grant the front
-  // cam rather than failing outright. We also CAP the requested resolution
-  // — iOS otherwise hands us a 1920×1080 (or even 4K) stream which the
-  // compositor then has to scale and blend with the WebGL canvas every
-  // frame, eating frame budget for visual quality the user can't perceive
-  // through a noisy passthrough background anyway. Pinned to roughly the
-  // canvas pixel size (max 1280×720) — the camera's intrinsic noise
-  // dominates any sharpness loss at this scale.
+  // cam rather than failing outright. We HARD-CAP the requested resolution
+  // at 1280×720 / 30 fps on touch devices — iOS otherwise hands us a
+  // 1920×1080 (or even 4K) stream which the compositor then has to scale
+  // and blend with the WebGL canvas every frame, eating frame budget for
+  // visual quality the user can't perceive through a noisy passthrough
+  // background anyway. Using `max` (not `exact`) so devices that can't
+  // physically produce 1280×720 still negotiate down rather than failing.
+  // The 720p cap was the difference between iPad pinned at 8 fps and
+  // a usable AR frame rate in earlier testing.
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
-        width:  { ideal: 1280, max: 1920 },
-        height: { ideal: 720,  max: 1080 },
+        width:  { ideal: 1280, max: 1280 },
+        height: { ideal: 720,  max: 720  },
         frameRate: { ideal: 30, max: 30 },
       },
       audio: false,
@@ -7564,6 +7566,23 @@ async function _arEnter(){
       return;
     }
   }
+  // Belt-and-suspenders: if the negotiated track came back larger than
+  // our 720p cap anyway (some iOS versions ignore `max` on the first
+  // negotiation), apply a track-level constraint to clamp it. This is a
+  // no-op when the device already honoured the original constraint.
+  try {
+    const track = stream.getVideoTracks()[0];
+    if(track && typeof track.applyConstraints === 'function'){
+      const s = track.getSettings ? track.getSettings() : {};
+      if((s.width || 0) > 1280 || (s.height || 0) > 720 || (s.frameRate || 0) > 30){
+        await track.applyConstraints({
+          width:  { max: 1280 },
+          height: { max: 720  },
+          frameRate: { max: 30 },
+        }).catch(()=>{});
+      }
+    }
+  } catch(_){}
   // Mount the camera stream in the backdrop <video> element
   const video = document.getElementById('ar-video');
   if(!video){
