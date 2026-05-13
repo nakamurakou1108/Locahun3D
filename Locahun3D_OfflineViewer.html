@@ -6546,6 +6546,14 @@ const walkMode = {
                          //   the camera looks slightly down-forward over the
                          //   avatar's head — better view of approach path)
   animTime:0,
+  // AnimationMixer-driven clip playback (populated when a rigged GLB with
+  // baked animations is loaded — e.g. jtoastie_walk.glb's "WalkLoop").
+  // When `mixer` is non-null, _avatarUpdateAnimation() drives the mixer
+  // instead of the bone-by-bone sine-wave fallback used for the procedural
+  // mannequin.
+  mixer:null,            // THREE.AnimationMixer
+  walkAction:null,       // primary locomotion action (walk / run)
+  animSource:'none',     // 'mixer' | 'procedural' | 'none'
 };
 const _wmRay = new THREE.Raycaster();
 const _wmDown = new THREE.Vector3(0,-1,0);
@@ -6558,8 +6566,10 @@ async function _avatarBuild(){
   const g = new THREE.Group();
   g.userData.__avatar = true;
   let fig;
+  let usedMixamo = false;
   try{
     fig = await _buildMixamoFigure(walkMode.height * 100, {skinColor:'#dcd8d2'});
+    usedMixamo = true;
   } catch(_e){
     fig = _addProceduralFigureToScene(walkMode.height * 100);
   }
@@ -6575,6 +6585,57 @@ async function _avatarBuild(){
         b.userData._restQ = b.quaternion.clone();
       }
     }
+  }
+  // ── Set up AnimationMixer if the loaded GLB has baked animation clips ──
+  // The Mixamo GLB (figures/jtoastie_walk.glb) ships with a "WalkLoop" clip
+  // alongside the standard "mixamo.com" rest/T-pose clip. Prefer WalkLoop;
+  // fall back to any non-empty clip. Mixamo locomotion clips bake root
+  // motion into the Hips translation, which would fight WASD-driven movement
+  // — strip Hips.position so only rotations animate.
+  walkMode.mixer = null;
+  walkMode.walkAction = null;
+  walkMode.animSource = walkMode.bones ? 'procedural' : 'none';
+  if(usedMixamo){
+    try{
+      const gltf = await _fetchMixamoGLB();
+      const clips = (gltf && gltf.animations) || [];
+      if(clips.length){
+        // Pick the best clip: prefer one literally named WalkLoop / Walk / Run;
+        // skip "mixamo.com" which is just a generic upload marker (often a
+        // 1-frame T-pose).
+        const score = (c) => {
+          const n = (c.name||'').toLowerCase();
+          if(/^walk(loop)?$/i.test(c.name||'')) return 100;
+          if(n.includes('walk') || n.includes('run')) return 80;
+          if(n === 'mixamo.com') return 1;
+          return 10;
+        };
+        const chosen = clips.slice().sort((a,b)=>score(b)-score(a))[0];
+        // Clone the clip and strip any Hips translation track to suppress
+        // baked root motion. Match both `mixamorig:Hips.position` and
+        // GLTFLoader's `mixamorig_Hips.position` sanitisation variants.
+        const filteredTracks = chosen.tracks.filter(t=>{
+          const m = /\.position$/.test(t.name);
+          if(!m) return true;
+          return !/(mixamorig[:_]?)?Hips\.position$/i.test(t.name);
+        });
+        const trimmed = new THREE.AnimationClip(
+          chosen.name + ':noRoot', chosen.duration, filteredTracks
+        );
+        walkMode.mixer = new THREE.AnimationMixer(fig.root);
+        walkMode.walkAction = walkMode.mixer.clipAction(trimmed);
+        walkMode.walkAction.setLoop(THREE.LoopRepeat, Infinity);
+        walkMode.walkAction.clampWhenFinished = false;
+        walkMode.walkAction.enabled = true;
+        walkMode.walkAction.setEffectiveWeight(0); // start idle (no influence)
+        walkMode.walkAction.play();
+        walkMode.animSource = 'mixer';
+        console.info('[avatar] AnimationMixer ready — clip="' + chosen.name +
+                     '" duration=' + chosen.duration.toFixed(2) + 's' +
+                     ' tracks=' + filteredTracks.length + '/' + chosen.tracks.length +
+                     ' (Hips position stripped)');
+      }
+    } catch(e){ console.warn('[avatar] AnimationMixer setup failed', e); }
   }
   // The walk avatar is NEVER selectable as a layer, so its skeleton helper
   // and any bone markers should stay hidden permanently.
@@ -6643,6 +6704,28 @@ function _avatarResetBones(){
 //   • An oscillating SWING component animates legs + arm counter-swing.
 // Run mode increases both frequency and amplitude.
 function _avatarUpdateAnimation(dt, walking, runMul){
+  // ── Mixer-driven path (GLB has baked WalkLoop clip) ─────────────────────
+  // Crossfade weight 0↔1 by walking state and scale playback rate by run.
+  // Mixer is the single source of truth for bone rotations when this path
+  // is active; the procedural setBone fallback below is skipped.
+  if(walkMode.mixer && walkMode.walkAction){
+    const a = walkMode.walkAction;
+    // Target weight: 1.0 when walking/running, 0 when idle. Smoothly approach
+    // so stopping doesn't snap the figure to its bind pose mid-stride.
+    const targetW = walking ? 1.0 : 0.0;
+    const cur = a.getEffectiveWeight();
+    const k = Math.min(1, dt * 8);   // ~125 ms time constant
+    a.setEffectiveWeight(cur + (targetW - cur) * k);
+    // Tie animation playback rate to actual locomotion speed. The base clip
+    // is designed for "WalkLoop" speed; running uses runMul ≈ 2.2 so the
+    // clip speeds up proportionally. Mild dead-zone on idle so the clip
+    // doesn't run backwards or stall awkwardly when weight is 0.
+    const rate = walking ? (runMul > 1 ? Math.min(2.0, runMul * 0.85) : 1.0) : 0.0;
+    a.setEffectiveTimeScale(Math.max(rate, walking ? 0.2 : 0));
+    walkMode.mixer.update(dt);
+    return;
+  }
+  // ── Procedural sine-wave path (only used when no AnimationMixer) ────────
   if(!walkMode.bones) return;
   const b = walkMode.bones;
   const rad = Math.PI/180;
@@ -9243,7 +9326,7 @@ async function _fetchMixamoGLB(){
   }
   const loader = new Cls();
   _mixamoCache = await new Promise((res,rej)=>{
-    loader.load('figures/jtoastie_animated_base.glb', res, undefined, rej);
+    loader.load('figures/jtoastie_walk.glb', res, undefined, rej);
   });
   return _mixamoCache;
 }
