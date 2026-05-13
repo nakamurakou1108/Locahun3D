@@ -11698,8 +11698,16 @@ function updatePerfStats(){
   // (essentially "is the GPU saturated?"). Stays low on capable hardware
   // regardless of whether rAF is throttled — that's the desired semantics.
   const util    = Math.min(200, (submitMs / budget) * 100);
-  // 余剰 = unused GPU budget (always 100 - util on the same axis).
-  const surplus = Math.max(0, Math.min(100, 100 - util));
+  // 余剰 (ヘッドルーム) — previously this was just (100 - GPU 負荷), so on
+  // iPad it would read "余剰 95%" even when the actual frame rate was
+  // 30 fps because Safari's compositor throttled rAF (the GPU was idle
+  // but the user couldn't tell from this bar). Switched to a frame-budget
+  // metric: how much of the 16.67 ms 60-fps budget the REAL frame
+  // interval consumes. Now on iPad at 30 fps the bar correctly shows
+  // 0 % (no headroom toward 60 fps) so the readout stops looking like
+  // "everything's fine" when fps is actually bad.
+  const frameUtil = Math.min(100, (wallMs / budget) * 100);
+  const surplus   = Math.max(0, 100 - frameUtil);
 
   // Colour grade
   const utilCol   = util < 50 ? '#2a7a2a' : util < 80 ? '#7a7a20' : util < 100 ? '#8a5a10' : '#8a2020';
