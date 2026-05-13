@@ -906,35 +906,57 @@ body{position:fixed;top:0;left:0;}
   #lp-footer-bar,
   #lp-divider,
   #layer-transform { display:none !important; }
-  /* Smartphone-only: minimal top-row UI to claw back as much 3-D view
-     real estate as possible. iPhone screens are too narrow for the
-     desktop sizing; the user wants the action buttons / fps badge to
-     sit AS HIGH AS POSSIBLE just under the topbar. iPad and other
-     touch devices with viewport ≥ 600 px are unaffected. */
+  /* Smartphone-only: shrink top-row UI to ~½ size. iPhone screens are too
+     narrow for the desktop sizing. iPad and other touch devices with
+     viewport ≥ 600 px are unaffected by this block. */
   #topbar{
-    height:24px;
-    padding:0 5px;gap:3px;
-    min-height:24px;
+    height:30px;
+    padding:0 6px;gap:4px;
   }
-  #topbar .tb-home{padding:0 6px;font-size:.58em;line-height:1.2;}
+  #topbar .tb-home{padding:1px 6px;font-size:.62em;}
   #topbar .tb-save-btn,
-  #topbar #tb-save-btn{padding:0 6px;font-size:.56em;line-height:1.2;}
-  #topbar #tb-project-name{font-size:.58em;padding:0 5px;max-width:110px;line-height:1.2;}
-  #topbar .tb-update{padding:0 5px;font-size:.52em;line-height:1.2;}
-  #topbar .tb-lang{padding:0 5px;font-size:.52em;line-height:1.2;}
-  #topbar .tb-bug{padding:0 4px;font-size:.58em;line-height:1.2;}
-  /* Action row (カメラリセット / アバター歩行 / AR) — sit flush against
-     the 24 px-tall topbar (top: 24 px, zero gap). Padding + font tuned
-     so each pill button is ~14 px tall total. */
-  #view-tl-btns{top:24px;gap:3px;padding-top:0;}
+  #topbar #tb-save-btn{padding:1px 6px;font-size:.6em;}
+  #topbar #tb-project-name{font-size:.62em;padding:1px 5px;max-width:120px;}
+  #topbar .tb-update{padding:1px 5px;font-size:.55em;}
+  #topbar .tb-lang{padding:1px 5px;font-size:.55em;}
+  #topbar .tb-bug{padding:1px 5px;font-size:.62em;}
+  /* Action row (カメラリセット / アバター歩行 / AR). Smartphone gets a
+     special override below (in the iPhone-only block) that lifts the
+     row INSIDE the topbar; here we keep the generic "flush against
+     topbar bottom" placement so other small-screen devices still get
+     a sane fallback layout. */
+  #view-tl-btns{top:30px;gap:3px;padding-top:1px;}
   #view-tl-btns > button,
   #view-tl-btns button{
-    padding:1px 6px !important;font-size:.52em !important;line-height:1.2 !important;
+    padding:2px 6px !important;font-size:.55em !important;line-height:1.2 !important;
   }
-  /* Top-right quality / fps badge — same flush placement next to topbar. */
   #qi-badge{
-    top:24px;right:5px;padding:1px 6px;font-size:.52em;gap:3px;line-height:1.2;
+    top:30px;right:6px;padding:2px 6px;font-size:.55em;gap:3px;line-height:1.2;
   }
+}
+/* iPhone-only (narrow OR short viewport that isn't an iPad) — hoist
+   the カメラリセット / アバター歩行 / AR row ALL THE WAY UP into the
+   topbar's vertical band so the 3-D view starts immediately below
+   the 30 px topbar. We hide the LOCAHUN 3D home button on iPhone to
+   free up the topbar centre for these action buttons. The user can
+   still go home via the share-sheet "completed" link or by reopening
+   the file. iPad keeps its own home button because viewport > 600 px
+   doesn't enter the smartphone media query. */
+@media (pointer:coarse) and (any-hover:none) and (max-width: 600px),
+       (pointer:coarse) and (any-hover:none) and (max-height: 500px){
+  #view-tl-btns{
+    top:3px !important;        /* sit inside the 30 px topbar */
+    z-index:210;               /* over the topbar (which is z-index 200) */
+  }
+  #view-tl-btns > button,
+  #view-tl-btns button{
+    /* Compact enough to share the topbar row with the side widgets. */
+    padding:1px 5px !important;font-size:.5em !important;
+    background:rgba(40,40,42,.92) !important;
+  }
+  /* Hide the centred LOCAHUN 3D button on iPhone so it doesn't collide
+     with the centred action row. */
+  #topbar .tb-home{display:none !important;}
 }
 
 </style>
