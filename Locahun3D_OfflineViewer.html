@@ -1057,11 +1057,18 @@ body{position:fixed;top:0;left:0;}
 <!-- ══ Quality Panel ══ -->
 <div id="quality-panel">
   <div class="qt" id="qt-title">🖥 画質</div>
+  <!-- Quality presets redefined to three levels (低 / 中 / 高).
+       Mapping of scale values is shifted up — the old "低" (0.5) was
+       too coarse to look acceptable and is now reachable only via the
+       watchdog's emergency downstep, not as a user-pickable preset.
+         低 (0): qualScale 0.75  (was 中)
+         中 (1): qualScale 1.0   (was 高)
+         高 (2): qualScale 1.5   (was 最高)
+  -->
   <div style="display:flex;gap:4px" id="qbtns">
-    <button onclick="setQuality(0.5,0)" id="qt-low">低</button>
-    <button onclick="setQuality(0.75,1)" id="qt-mid">中</button>
-    <button onclick="setQuality(1.0,2)" class="on" id="qt-high">高</button>
-    <button onclick="setQuality(1.5,3)" id="qt-ultra">最高</button>
+    <button onclick="setQuality(0.75,0)" id="qt-low">低</button>
+    <button onclick="setQuality(1.0,1)" class="on" id="qt-mid">中</button>
+    <button onclick="setQuality(1.5,2)" id="qt-high">高</button>
   </div>
 
   <!-- Settings merged here: グリッド / FOV / 移動速度. Previously these
@@ -2952,8 +2959,14 @@ const _macKind = _gpu.macKind;     // 'none' | 'silicon' | 'intel' | 'unknown'
 // laptops at the same 1.0 ceiling as desktop is safe — the watchdog will
 // drop them within a few seconds if they actually can't sustain it. This
 // brings every non-touch device under one consistent "desktop" experience.
+// Three-preset quality system (2026-05 redefinition):
+//   低 (idx 0) = scale 0.75
+//   中 (idx 1) = scale 1.0
+//   高 (idx 2) = scale 1.5
+// Mobile starts at 低, desktop at 中 — the old "高" / "最高" were redundant
+// in practice after the watchdog took over high-end up-stepping.
 let qualScale = isMobile ? 0.75 : 1.0;
-let qualIdx   = isMobile ? 1    : 2;
+let qualIdx   = isMobile ? 0    : 1;
 // "Preferred" quality — the ceiling the continuous-watchdog up-steps toward
 // after a downgrade. Starts as the device-tier auto pick; setQuality()
 // updates it when the user manually picks a level (so the watchdog won't
@@ -2965,7 +2978,7 @@ let _qualPreferred = qualScale;
 // emitted later in the body.
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('qib-lvl');
-  const labels = ['低','中','高','最高'];
+  const labels = ['低','中','高'];
   if(el) el.textContent = labels[qualIdx] || '?';
   // Also reflect the auto-selected preset in the in-panel button row.
   document.querySelectorAll('#quality-panel #qbtns button')
@@ -9302,7 +9315,6 @@ const I18N = {
   'qt-low':'低',
   'qt-mid':'中',
   'qt-high':'高',
-  'qt-ultra':'最高',
   'qp-perf-t':'📊 処理能力モニター',
   'qp-lbl-lowpoly-main':'ポリゴン半減',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT のみ・自動で再読み込み',
@@ -9413,7 +9425,6 @@ const I18N = {
   'qt-low':'Low',
   'qt-mid':'Mid',
   'qt-high':'High',
-  'qt-ultra':'Ultra',
   'qp-perf-t':'📊 Performance Monitor',
   'qp-lbl-lowpoly-main':'Halve splats',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT only — auto reload',
@@ -9491,7 +9502,7 @@ function applyI18n(){
     el.innerHTML=T(k);
   });
   // HUD labels
-  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-portalcam-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qt-ultra','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-recommended','em-h-title','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','lbl-walk','giz-pt-a','giz-pt-b','giz-pt-c','giz-world-a','giz-world-b','giz-world-c','giz-step','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
+  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-portalcam-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-recommended','em-h-title','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','lbl-walk','giz-pt-a','giz-pt-b','giz-pt-c','giz-world-a','giz-world-b','giz-world-c','giz-step','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.textContent=T(id);
   });
   // HUD info-box edit tooltip + dropzone titles
@@ -12657,14 +12668,16 @@ function animate(now) {
   //   respected as a cap; below it the watchdog still defends 30 fps.
   if(!window._gpuWatchdog) window._gpuWatchdog = { slowStreak:0, fastStreak:0, lastStep:0 };
   const _wd = window._gpuWatchdog;
+  // STEPS_ALL keeps the emergency 0.35 / 0.5 steps so the watchdog can
+  // defend the 30 fps floor even below the lowest user-pickable preset.
+  // The UI only exposes 0.75 / 1.0 / 1.5 as discrete buttons — anything
+  // below 0.75 (watchdog-only territory) still labels as "低".
   const STEPS_ALL = [0.35, 0.5, 0.75, 1.0, 1.5];
   const PRESET_FOR_SCALE = s => {
-    // Map a qualScale value back to a 0..3 preset index for the badge label.
-    // Treat 1.5 as "最高" (3), 1.0 as "高" (2), 0.75 as "中" (1), anything
-    // below 0.75 (incl. emergency 0.35) as "低" (0).
-    if(s >= 1.4) return 3;
-    if(s >= 0.95) return 2;
-    if(s >= 0.7) return 1;
+    // Map a qualScale value back to a 0..2 preset index for the badge.
+    //   1.5 → 高 (2), 1.0 → 中 (1), 0.75 and below → 低 (0)
+    if(s >= 1.4)  return 2;
+    if(s >= 0.95) return 1;
     return 0;
   };
   if(_ftSamples.length >= 30 && (now - _wd.lastStep) > 4000){
@@ -15666,7 +15679,7 @@ window.toggleQPanel=function(){
 // Sync the top-right always-visible quality badge label to the active
 // preset. Called from setQuality and the undo callback so the badge can
 // never drift out of step with the actual renderer pixel ratio.
-const _QIB_LABELS = ['低','中','高','最高'];
+const _QIB_LABELS = ['低','中','高'];
 function _updateQiBadgeLabel(idx){
   const el = document.getElementById('qib-lvl');
   if(el) el.textContent = _QIB_LABELS[idx] || '?';
@@ -15694,9 +15707,9 @@ window.setQuality=function(scale,idx){
     window._gpuWatchdog.lastStep = performance.now();
   }
   markDirty(8);
-  const SCALES = [0.5, 0.75, 1.0, 1.5];
+  const SCALES = [0.75, 1.0, 1.5];
   pushGenericUndo('quality', before, idx, val=>{
-    const i = Math.max(0, Math.min(3, val|0));
+    const i = Math.max(0, Math.min(2, val|0));
     qualIdx = i; qualScale = SCALES[i];
     renderer.setPixelRatio(Math.min(devicePixelRatio,_PR_CAP)*qualScale);
     document.querySelectorAll('#quality-panel #qbtns button').forEach((b,k)=>b.classList.toggle('on',k===i));
@@ -15720,11 +15733,10 @@ window.setQuality=function(scale,idx){
 //   for "first impression" tuning, not to override deliberate choice.
 // • Skipped if _ftAvg hasn't yet accumulated meaningful samples
 //   (the window is 60 render calls; pre-load it's noisy / zero).
-// • Picks based on render-call ms vs frame budget:
-//     <  8 ms  → 最高 (preset 3, scale 1.5)
-//     <  12 ms → 高    (preset 2, scale 1.0)
-//     <  18 ms → 中    (preset 1, scale 0.75)
-//     else    → 低    (preset 0, scale 0.5)
+// • Picks based on render-call ms vs frame budget (3-preset system):
+//     <  8 ms  → 高 (preset 2, scale 1.5)
+//     <  12 ms → 中 (preset 1, scale 1.0)
+//     else    → 低 (preset 0, scale 0.75)
 //   Headroom values are chosen so 60 fps is sustained even when the
 //   scene gets busier (more layers, camera motion → more splat sorting).
 // • Does NOT push an undo entry — auto-tuning shouldn't clutter the
@@ -15736,12 +15748,11 @@ function _probeOptimalQuality(){
     if(!_ftAvg || _ftAvg <= 0) return; // not enough samples yet — bail
     const ms = _ftAvg;
     let targetIdx;
-    if      (ms < 8)  targetIdx = 3;
-    else if (ms < 12) targetIdx = 2;
-    else if (ms < 18) targetIdx = 1;
+    if      (ms < 8)  targetIdx = 2;
+    else if (ms < 12) targetIdx = 1;
     else              targetIdx = 0;
     if(targetIdx === qualIdx) return; // already optimal — no-op
-    const SCALES = [0.5, 0.75, 1.0, 1.5];
+    const SCALES = [0.75, 1.0, 1.5];
     qualIdx   = targetIdx;
     qualScale = SCALES[targetIdx];
     // Also raise the watchdog's up-step ceiling to match: the probe just
@@ -15754,7 +15765,7 @@ function _probeOptimalQuality(){
       .forEach((b,i)=>b.classList.toggle('on', i === targetIdx));
     _updateQiBadgeLabel(targetIdx);
     markDirty(8);
-    console.info('[Locahun][AutoQuality] probe →', ['低','中','高','最高'][targetIdx],
+    console.info('[Locahun][AutoQuality] probe →', ['低','中','高'][targetIdx],
                  `(scale ${qualScale}, render ~${ms.toFixed(1)} ms, new ceiling)`);
   } catch(e){
     console.warn('[Locahun][AutoQuality] probe failed:', e);
