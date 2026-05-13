@@ -6270,6 +6270,11 @@ function estimatePLYStats(buffer,flipYZ) {
 function _splatStride(){
   // Read user preference from localStorage. 1 = full quality, 2 = halve,
   // 3 = quarter (kept available behind the same flag for power users).
+  // Default is 1 (full) for ALL devices. The previous iPhone-default-2
+  // behaviour was too aggressive for small files; instead, large files
+  // on iPhone now auto-write '2' to localStorage at load time (see
+  // loadSplatFile), so the toggle visually flips ON the first time the
+  // user opens a >300 MB file and persists from then on.
   try {
     const raw = localStorage.getItem('locahun_splat_stride');
     if(raw != null){
@@ -6277,15 +6282,6 @@ function _splatStride(){
       if(v >= 1 && v <= 8) return v;
     }
   } catch(_){}
-  // Default on iPhone / iPod: stride 2 (auto-halve). iPhone Safari has
-  // a tab memory ceiling around 1.5 GB and crashes ("問題が繰り返し
-  // 起きました") when a typical 500–900 MB PLY is parsed + Spark builds
-  // the SplatMesh; pre-halving the input buffer keeps peak memory
-  // under the cap. iPad and desktop default to stride 1 (full
-  // resolution) and let the watchdog handle quality. The UA-based
-  // check is used in preference to _splatPerfTier === 'phone' (which
-  // is viewport-size-driven and mis-classifies iPad Split View).
-  if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod) return 2;
   return 1;
 }
 function subsamplePLY(rawBuf, stride){
@@ -6360,22 +6356,13 @@ function subsampleSplatFile(rawBuf, stride){
   }
 }
 // Dispatch helper — call before handing rawBuf to Spark.
-// Base stride comes from `_splatStride()` (localStorage preference,
-// defaulting to 2 on iPhone / iPod and 1 elsewhere). On iPhone we
-// also auto-escalate to stride 4 for files larger than 300 MB so the
-// Safari tab memory ceiling (~1.5 GB) isn't blown by big scans that
-// triple-buffer through Spark's parse + packedSplats + accumulator
-// pipeline. iPad is NOT subject to this escalation even when Split
-// View shrinks the viewport — the check uses UA (_isIPhoneOrIPod)
-// rather than the viewport-based _splatPerfTier classification.
+// Stride is determined entirely by `_splatStride()` (localStorage
+// preference, defaulting to 1 on every device). The iPhone-specific
+// auto-halve for >300 MB files is now seeded into localStorage at
+// load time by loadSplatFile() so the UI toggle reflects the state
+// truthfully and the user can override either direction.
 function maybeDecimateSplatBuffer(rawBuf, ext){
-  let stride = _splatStride();
-  if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod &&
-     (ext === 'ply' || ext === 'splat') && rawBuf && rawBuf.byteLength){
-    if(rawBuf.byteLength > 300 * 1024 * 1024){
-      stride = Math.max(stride, 4);
-    }
-  }
+  const stride = _splatStride();
   if(stride <= 1) return rawBuf;
   if(ext === 'ply'){
     const out = subsamplePLY(rawBuf, stride);
@@ -6794,10 +6781,9 @@ async function loadSplatFile(file){
     // iPhone Safari tab memory ceiling (~1.5 GB) crashes the tab with
     // "問題が繰り返し起きました" when a typical >250 MB PLY is parsed +
     // Spark builds the SplatMesh. Show a warning toast up front so the
-    // user knows what's about to happen and has the option to cancel and
-    // use a smaller SPZ instead. Gated on _isIPhoneOrIPod (UA, not the
-    // viewport-driven _splatPerfTier) so iPads aren't false-positive'd
-    // in Split View / narrow windows.
+    // user knows what's about to happen. Gated on _isIPhoneOrIPod (UA,
+    // not the viewport-driven _splatPerfTier) so iPads aren't false-
+    // positive'd in Split View / narrow windows.
     if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod &&
        (ext === 'ply' || ext === 'splat') && file && file.size > 250*1024*1024){
       const mb = Math.round(file.size / 1024 / 1024);
@@ -6805,6 +6791,28 @@ async function loadSplatFile(file){
       if(typeof showUndoToast === 'function'){
         showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
       }
+    }
+    // iPhone + >300 MB: SEED ポリゴン半減 to ON in localStorage if the
+    // user hasn't expressed a preference yet. This makes the toggle UI
+    // visibly reflect the recommended setting (instead of silently
+    // halving behind the scenes), keeps memory at half so the tab
+    // doesn't crash, and lets the user flip it back off any time.
+    // Once seeded, the preference persists across loads.
+    if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod &&
+       (ext === 'ply' || ext === 'splat') && file && file.size > 300*1024*1024){
+      try {
+        if(localStorage.getItem('locahun_splat_stride') == null){
+          localStorage.setItem('locahun_splat_stride', '2');
+          // Reflect in UI: panel checkbox + (if visible) the hint card.
+          const cb = document.getElementById('lowpoly-toggle');
+          if(cb) cb.checked = true;
+          const hintCb = document.getElementById('lph-cb');
+          if(hintCb) hintCb.checked = true;
+          if(typeof showUndoToast === 'function'){
+            showUndoToast('🎚 大きいファイルのため「ポリゴン半減」を ON にしました');
+          }
+        }
+      } catch(_){}
     }
 
     // ── 常にバッファを読み込む（ZIP保存キャッシュ兼用）──
