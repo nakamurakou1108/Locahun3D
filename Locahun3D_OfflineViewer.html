@@ -6618,79 +6618,93 @@ function _makeWalkClip(bones, opts){
   // (that's where the previous Euler hack broke) — each keyframe gets
   // BOTH the drop and the swing as separate world-axis rotations.
 
-  const SWING_LEG = 28;   // ± deg, upper leg swing about world X
-  const KNEE     = 38;   // deg, knee bend on back-swing (rear leg)
-  const SWING_ARM = 22;  // ± deg, upper arm swing about world X
-  const ARM_DROP = 90;   // deg, base drop from T-pose
+  const SWING_LEG  = 35;   // ± deg, upper leg swing about world X
+  const KNEE       = 50;   // deg, knee bend on back-swing
+  const KNEE_PASS  = 18;   // deg, slight knee bend during passing pose
+  const SWING_ARM  = 28;   // ± deg, upper arm swing about world X
+  const ARM_DROP   = 88;   // deg, base drop from T-pose (~vertical)
 
-  // Each pose entry = array of { wx, wy, wz, deg } operations applied to
-  // the bone's bind pose, compounded in world space.
+  // 5-keyframe (4 + loop-closing repeat) cycle with explicit PASSING poses.
+  // Three.js interpolates linearly between adjacent keys, so without
+  // passing poses the t=0.25/0.75 moments collapse to the average of the
+  // extremes (≈0) and the limbs look frozen mid-cycle.
+  //   t=0.00  STRIDE A: L-leg fwd / R-leg back  (R-arm fwd / L-arm back)
+  //   t=0.25  PASSING:  legs near neutral, arms passing center
+  //   t=0.50  STRIDE B: R-leg fwd / L-leg back  (L-arm fwd / R-arm back)
+  //   t=0.75  PASSING:  legs near neutral (mirror of t=0.25)
+  //   t=1.00  loop back to t=0.00
+  //
+  // Each pose entry = list of [wx, wy, wz, deg] WORLD-axis operations.
+  // Conv: ops[0] is applied LAST in world space (left-most in the
+  // mathematical multiplication chain).
   const poses = {
-    // ── LEGS ── world +X swing
+    // ── UPPER LEGS ── world +X swing (front/back of body)
     upperLegL: [
-      [[1,0,0, +SWING_LEG]],  // t=0  forward
-      [[1,0,0, -SWING_LEG]],  // t=0.5 back
-      [[1,0,0, +SWING_LEG]],  // t=1  loop
+      [[1,0,0, +SWING_LEG]],     // t=0   stride A: fwd
+      [[1,0,0,  +5]],            // t=0.25 passing (slight fwd)
+      [[1,0,0, -SWING_LEG]],     // t=0.5 stride B: back
+      [[1,0,0,  -5]],            // t=0.75 passing (slight back)
+      [[1,0,0, +SWING_LEG]],
     ],
     upperLegR: [
       [[1,0,0, -SWING_LEG]],
+      [[1,0,0,  -5]],
       [[1,0,0, +SWING_LEG]],
+      [[1,0,0,  +5]],
       [[1,0,0, -SWING_LEG]],
     ],
-    // ── KNEES ── bend only on back-swing
+    // ── KNEES ── bend on back-swing + slight bend during passing
     lowerLegL: [
-      [[1,0,0,    0]],  // t=0  L-leg forward, knee straight
-      [[1,0,0,  +KNEE]],// t=0.5 L-leg back, knee bent
-      [[1,0,0,    0]],
+      [[1,0,0,         0]],      // L-leg fwd, knee straight (front foot)
+      [[1,0,0, +KNEE_PASS]],     // passing: slight bend
+      [[1,0,0,     +KNEE]],      // L-leg back, knee bent (rear lifting)
+      [[1,0,0, +KNEE_PASS]],
+      [[1,0,0,         0]],
     ],
     lowerLegR: [
-      [[1,0,0,  +KNEE]],
-      [[1,0,0,    0]],
-      [[1,0,0,  +KNEE]],
+      [[1,0,0,     +KNEE]],
+      [[1,0,0, +KNEE_PASS]],
+      [[1,0,0,         0]],
+      [[1,0,0, +KNEE_PASS]],
+      [[1,0,0,     +KNEE]],
     ],
-    // ── ARMS ── drop down (world Z rotation), then swing about world X
-    // LeftArm bone in bind points world +X → rotate about world +Z by +90°
-    // to drop it to world −Y. RightArm bone points world −X → rotate about
-    // world +Z by −90°. Order: drop FIRST in world (applied last
-    // mathematically), then swing applied even LATER means swing list is
-    // BEFORE drop in the array (our convention: index 0 = applied last).
-    // Mixamo avatar at bind: faces world -Z, character's LEFT side toward
-    // world +X, RIGHT side toward world -X. To DROP an arm whose tip is at
-    // world +X (LeftArm) down to world -Y, rotate around world +Z by -90°
-    // (right-hand rule: thumb +Z, fingers go +X → +Y, so -90° goes +X → -Y).
-    // RightArm tip at world -X drops via +90° around +Z (-X → -Y).
+    // ── UPPER ARMS ── drop to side (world ±Z) + ±X swing (forward/back).
+    // Mixamo bind: avatar faces world -Z. LeftArm bone tip points world +X
+    // (character's left), RightArm tip points world -X. To drop +X → -Y:
+    // rotation around world +Z by -90°. To drop -X → -Y: around +Z by +90°.
+    // Arms swing COUNTER to legs (right arm forward when left leg forward).
     upperArmL: [
-      // arm hangs at side, swung BACK at t=0 (counter-syncs with right leg fwd)
-      [[1,0,0, -SWING_ARM],  [0,0,1, -ARM_DROP]],   // swing-back ⊕ drop
-      [[1,0,0, +SWING_ARM],  [0,0,1, -ARM_DROP]],
+      // ops list order = [last applied, ..., first applied]
+      // first apply drop (-ARM_DROP around +Z), then swing on top
+      [[1,0,0, -SWING_ARM],  [0,0,1, -ARM_DROP]],   // t=0   back swing
+      [[1,0,0,         0],   [0,0,1, -ARM_DROP]],   // t=0.25 passing
+      [[1,0,0, +SWING_ARM],  [0,0,1, -ARM_DROP]],   // t=0.5  fwd swing
+      [[1,0,0,         0],   [0,0,1, -ARM_DROP]],   // t=0.75 passing
       [[1,0,0, -SWING_ARM],  [0,0,1, -ARM_DROP]],
     ],
     upperArmR: [
-      [[1,0,0, +SWING_ARM],  [0,0,1, +ARM_DROP]],
+      [[1,0,0, +SWING_ARM],  [0,0,1, +ARM_DROP]],   // fwd swing
+      [[1,0,0,         0],   [0,0,1, +ARM_DROP]],
       [[1,0,0, -SWING_ARM],  [0,0,1, +ARM_DROP]],
+      [[1,0,0,         0],   [0,0,1, +ARM_DROP]],
       [[1,0,0, +SWING_ARM],  [0,0,1, +ARM_DROP]],
     ],
-    // Slight elbow bend (about world X, in the bone's bind orientation
-    // the elbow naturally bends about the X axis once the arm is dropped)
+    // Slight elbow bend, constant — once arm is dropped the elbow flex
+    // axis aligns with world +X (the swing axis), so a small +X rotation
+    // here produces a relaxed bent-elbow look.
     lowerArmL: [
-      [[1,0,0,  20]],
-      [[1,0,0,  20]],
-      [[1,0,0,  20]],
+      [[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],
     ],
     lowerArmR: [
-      [[1,0,0,  20]],
-      [[1,0,0,  20]],
-      [[1,0,0,  20]],
+      [[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],
     ],
-    // Subtle head forward tilt
+    // Subtle head forward tilt (constant)
     head: [
-      [[1,0,0,  4]],
-      [[1,0,0,  4]],
-      [[1,0,0,  4]],
+      [[1,0,0,  4]],[[1,0,0,  4]],[[1,0,0,  4]],[[1,0,0,  4]],[[1,0,0,  4]],
     ],
   };
 
-  const times = new Float32Array([0, 0.5, 1.0]).map(t => t * cycleSec);
+  const times = new Float32Array([0, 0.25, 0.5, 0.75, 1.0]).map(t => t * cycleSec);
   const tracks = [];
 
   // Reusable temporaries
