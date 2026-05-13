@@ -3452,13 +3452,42 @@ window.resetCameraToInitial = function(){
   markDirty(10);
 };
 
-window.addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth / innerHeight;
+// Resize handler. iOS Safari fires `resize` on orientation change but
+// the first dispatch frequently arrives with stale innerWidth /
+// innerHeight values (the visual viewport hasn't finished rotating
+// yet), which then locked the renderer at the wrong size and left
+// black bands on the freshly rotated screen. Run the resize logic
+// once immediately AND twice on a short timer to let the visual
+// viewport settle, and also hook orientationchange + visualViewport
+// so we don't depend on a single event source.
+function _doViewportResize(){
+  const w = Math.max(1, innerWidth);
+  const h = Math.max(1, innerHeight);
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
   _syncOrthoCamera();
-  markDirty(4);
+  markDirty(8);
+}
+window.addEventListener('resize', () => {
+  _doViewportResize();
+  // Re-run on the next two frames; on iOS the canvas dimensions
+  // sometimes don't reflect the post-rotation viewport until layout
+  // commits, leaving black bars otherwise.
+  requestAnimationFrame(_doViewportResize);
+  setTimeout(_doViewportResize, 250);
 });
+window.addEventListener('orientationchange', () => {
+  // iOS Safari often does NOT fire a usable resize after a rotate
+  // unless we wait — kick three deferred re-fits to catch the various
+  // commit timings across iPhone / iPad / split-view.
+  setTimeout(_doViewportResize,  50);
+  setTimeout(_doViewportResize, 250);
+  setTimeout(_doViewportResize, 600);
+});
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', _doViewportResize);
+}
 
 const grid = new THREE.GridHelper(200, 200, 0x221100, 0x110800);
 grid.position.y = -0.01; grid.visible = false; scene.add(grid);
