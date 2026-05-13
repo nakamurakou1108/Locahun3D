@@ -6601,8 +6601,13 @@ document.addEventListener('DOMContentLoaded', () => {
 // iPad-specific popup shown after loading a > 300 MB scene. iPad has
 // enough memory to handle big files at full quality, so unlike iPhone
 // we DON'T auto-decimate. But the user might find the scene heavy, so
-// the popup tells them where to reduce polygons if needed — namely the
-// 🎚 ポリゴン半減 toggle behind the top-right FPS badge.
+// the popup carries:
+//   • Notification text "動作が重い場合 ポリゴン半減を ON"
+//   • Inline checkbox the user can flip directly (live-bound to
+//     setLowPolyMode) — mirrors the smartphone hint card's pattern
+//   • ✕ button at top-right to dismiss
+//   • Guidance line pointing at the FPS badge as the permanent
+//     location for this toggle
 window.showIPadLargeFileHint = function(mb){
   const old = document.getElementById('ipad-largefile-hint');
   if(old) old.remove();
@@ -6611,47 +6616,73 @@ window.showIPadLargeFileHint = function(mb){
   card.style.cssText =
     'position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:160;' +
     'background:rgba(20,20,22,.97);border:1px solid rgba(120,200,255,.55);' +
-    'border-radius:12px;padding:14px 16px;max-width:420px;' +
+    'border-radius:12px;padding:14px 16px;max-width:440px;' +
     'box-shadow:0 8px 24px rgba(0,0,0,.6);' +
     'color:#cfe8ff;font-size:.86em;line-height:1.5;letter-spacing:.02em;' +
     'font-family:inherit;pointer-events:auto;' +
     'transition:opacity .35s ease;';
   const lang = (window._lang === 'en') ? 'en' : 'ja';
-  const title  = (lang === 'en')
+  const title    = (lang === 'en')
     ? '📦 Loaded at full quality (' + (mb||0) + ' MB)'
     : '📦 フル品質で読み込みました(' + (mb||0) + ' MB)';
-  const body   = (lang === 'en')
-    ? 'If the scene feels heavy, you can halve the splat count later from the top-right FPS badge → "Halve splats".'
-    : '動作が重い場合は、右上の FPS バッジ → 「ポリゴン半減」から後でスプラット数を半減できます。';
-  const ok     = (lang === 'en') ? 'Got it' : 'OK';
+  const headline = (lang === 'en')
+    ? 'If performance feels heavy, turn ON "Halve splats".'
+    : '動作が重い場合は「ポリゴン半減」を ON';
+  const cbLbl    = (lang === 'en') ? 'Halve splats' : 'ポリゴン半減';
+  const hint     = (lang === 'en')
+    ? 'You can also toggle this anytime from the top-right FPS badge.'
+    : 'この設定は右上の FPS 表示ボタンからも切り替えられます。';
+  const dismissLbl = (lang === 'en') ? 'Dismiss' : '閉じる';
+  const checked = (_splatStride() >= 2) ? 'checked' : '';
   card.innerHTML =
-    '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">' +
+    // Title row (file size) + close button
+    '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">' +
       '<div style="flex:1;font-weight:600;color:#e6f4ff;">' + title + '</div>' +
-      '<button id="iplh-x" aria-label="dismiss" ' +
+      '<button id="iplh-x" aria-label="' + dismissLbl + '" ' +
         'style="background:transparent;border:none;color:rgba(207,232,255,.7);' +
-        'font-size:1.15em;line-height:1;cursor:pointer;padding:2px 4px;' +
+        'font-size:1.2em;line-height:1;cursor:pointer;padding:2px 4px;' +
         'border-radius:4px;margin:-2px -4px 0 0;">✕</button>' +
     '</div>' +
-    '<div style="font-size:.95em;color:rgba(207,232,255,.85);">' + body + '</div>' +
-    '<div style="display:flex;justify-content:flex-end;margin-top:10px;">' +
-      '<button id="iplh-ok" style="' +
-        'background:rgba(120,200,255,.16);border:1px solid rgba(120,200,255,.5);' +
-        'color:#cbe8ff;border-radius:6px;padding:5px 16px;font-size:.95em;' +
-        'cursor:pointer;font-weight:600;letter-spacing:.04em;">' + ok + '</button>' +
+    // Headline
+    '<div style="font-size:.95em;color:rgba(207,232,255,.92);margin-bottom:10px;">' +
+      '⚡ ' + headline +
+    '</div>' +
+    // Inline checkbox (live-bound)
+    '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;' +
+      'padding:6px 9px;margin:4px 0 10px;border-radius:8px;' +
+      'background:rgba(120,200,255,.10);border:1px solid rgba(120,200,255,.35);' +
+      'user-select:none;">' +
+      '<input type="checkbox" id="iplh-cb" ' + checked + ' ' +
+        'style="accent-color:#5bb0ff;cursor:pointer;width:17px;height:17px;">' +
+      '<span style="font-size:.95em;color:#cbe8ff;font-weight:500;">' +
+        '🎚 ' + cbLbl + '</span>' +
+    '</label>' +
+    // Guidance line
+    '<div style="font-size:.8em;color:rgba(207,232,255,.6);line-height:1.4;' +
+      'padding-top:6px;border-top:1px dashed rgba(120,200,255,.22);">' +
+      '💡 ' + hint +
     '</div>';
   document.body.appendChild(card);
   const dismiss = ()=>{
     card.style.opacity = '0';
     setTimeout(()=>{ if(card.parentNode) card.remove(); }, 400);
   };
-  const xBtn  = card.querySelector('#iplh-x');
-  const okBtn = card.querySelector('#iplh-ok');
-  if(xBtn)  xBtn.addEventListener('click',  dismiss);
-  if(okBtn) okBtn.addEventListener('click', dismiss);
-  // Auto-dismiss after 15 s — slightly longer than the smartphone hint
-  // because the text is denser and the user has to find a button to
-  // tap. Hand-dismiss still works at any point.
-  setTimeout(dismiss, 15000);
+  const xBtn = card.querySelector('#iplh-x');
+  const cb   = card.querySelector('#iplh-cb');
+  if(xBtn) xBtn.addEventListener('click', dismiss);
+  if(cb){
+    cb.addEventListener('change', ()=>{
+      try { window.setLowPolyMode(!!cb.checked); } catch(_){}
+      // Sync the quality-panel and smartphone-hint checkboxes if present.
+      const panelCb = document.getElementById('lowpoly-toggle');
+      if(panelCb) panelCb.checked = !!cb.checked;
+      const phCb = document.getElementById('lph-cb');
+      if(phCb) phCb.checked = !!cb.checked;
+    });
+  }
+  // Auto-dismiss after 18 s — denser text + checkbox means the user
+  // needs a touch longer to read, but we don't want it lingering forever.
+  setTimeout(dismiss, 18000);
 };
 
 window.showLowPolyHint = function(){
