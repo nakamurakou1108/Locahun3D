@@ -14729,13 +14729,13 @@ canvas.addEventListener('touchend',e=>{
 // Fix: track the specific touch identifier captured at touchstart, and
 // only react to events for that identifier.
 //
-// Slack zone: per user request, drags up to 1.5× R (50% beyond the
+// Slack zone: per user request, drags up to 2.5× R (150% beyond the
 // visible circle) still register as "full deflection" rather than
-// snapping the joystick off. Beyond 1.5× R the joystick auto-releases.
+// snapping the joystick off. Beyond 2.5× R the joystick auto-releases.
 (()=>{
   const joy=document.getElementById('joy'),knob=document.getElementById('jknob');
-  const R=51;       // visible joystick radius (px, post-CSS scaling)
-  const SLACK=R*1.5; // outer "still tracking" radius (50% beyond visible)
+  const R=51;        // visible joystick radius (px, post-CSS scaling)
+  const SLACK=R*2.5; // outer "still tracking" radius (150% beyond visible)
   const C=88;
   let on=false, jId=-1, bx=88, by=88;
   function resetKnob(){
