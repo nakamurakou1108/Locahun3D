@@ -12355,11 +12355,22 @@ let _lastPerfFrameTime = performance.now();
 // canvas compositing and a CSS transform would offset the camera-
 // passthrough background incorrectly.
 //
-// Disabled via `?smooth=0` URL param if it causes artifacts on a given
-// device (per-pixel scene parallax can't be reprojected exactly, only
-// approximated as a flat 2-D shift; the approximation is convincing for
-// small deltas but visibly wrong for very large drags).
-let _reprojectionEnabled = !/[?&]smooth=0/.test(location.search);
+// Enabled ONLY on touch devices where rAF gets compositor-throttled
+// to ~11 Hz on iPad. On desktop the animate loop already runs at the
+// full 60 Hz display refresh, so applying a CSS offset every input
+// event and snapping it back every render frame just causes visible
+// "wobble" — the user reported this as PC views going ぐわんぐわん
+// when panning left-right. Override:
+//   ?smooth=1 : force enable (e.g. to test on a touchscreen laptop)
+//   ?smooth=0 : force disable
+let _reprojectionEnabled = (function(){
+  if(/[?&]smooth=0/.test(location.search)) return false;
+  if(/[?&]smooth=1/.test(location.search)) return true;
+  // Default: touch devices only.
+  try {
+    return window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
+  } catch(_){ return false; }
+})();
 let _lastRenderYaw   = 0;
 let _lastRenderPitch = 0;
 function _applyCanvasReprojection(){
