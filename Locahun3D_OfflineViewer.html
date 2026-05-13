@@ -6244,9 +6244,19 @@ function _splatStride(){
   // Read user preference from localStorage. 1 = full quality, 2 = halve,
   // 3 = quarter (kept available behind the same flag for power users).
   try {
-    const v = parseInt(localStorage.getItem('locahun_splat_stride') || '1', 10);
-    if(v >= 2 && v <= 8) return v;
+    const raw = localStorage.getItem('locahun_splat_stride');
+    if(raw != null){
+      const v = parseInt(raw, 10);
+      if(v >= 1 && v <= 8) return v;
+    }
   } catch(_){}
+  // Default on phone tier: stride 2 (auto-halve). iPhone Safari has a
+  // tab memory ceiling around 1.5 GB and crashes ("問題が繰り返し起き
+  // ました") when a typical 500–900 MB PLY is parsed + Spark builds
+  // the SplatMesh; pre-halving the input buffer keeps peak memory
+  // safely under the cap. iPad and desktop default to stride 1
+  // (full resolution) and let the watchdog handle quality.
+  if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone') return 2;
   return 1;
 }
 function subsamplePLY(rawBuf, stride){
@@ -6737,6 +6747,22 @@ async function loadSplatFile(file){
   try{
     showLd(T('loading')); setBar(5); setMsg(T('preparing'));
     const ext=file.name.split('.').pop().toLowerCase();
+
+    // iPhone Safari tab memory ceiling (~1.5 GB) crashes the tab with
+    // "問題が繰り返し起きました" when a typical >250 MB PLY is parsed +
+    // Spark builds the SplatMesh. Show a warning toast up front so the
+    // user knows what's about to happen and has the option to cancel and
+    // use a smaller SPZ instead. Threshold is intentionally conservative:
+    // file size is 1/3rd of peak memory once Spark's accumulator and
+    // packedSplats buffers are allocated.
+    if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone' &&
+       (ext === 'ply' || ext === 'splat') && file && file.size > 250*1024*1024){
+      const mb = Math.round(file.size / 1024 / 1024);
+      console.warn('[Locahun] Large file on phone tier (' + mb + ' MB) — risk of tab crash');
+      if(typeof showUndoToast === 'function'){
+        showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
+      }
+    }
 
     // ── 常にバッファを読み込む（ZIP保存キャッシュ兼用）──
     setMsg(T('loading-file')); setBar(15);
