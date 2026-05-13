@@ -6600,104 +6600,29 @@ document.addEventListener('DOMContentLoaded', () => {
 //     the permanent place this setting lives
 // Auto-fades after 12 s so it doesn't linger if ignored.
 
-// iPad-specific popup shown after loading a > 300 MB scene. iPad has
-// enough memory to handle big files at full quality, so unlike iPhone
-// we DON'T auto-decimate. But the user might find the scene heavy, so
-// the popup carries:
-//   • Notification text "動作が重い場合 ポリゴン半減を ON"
-//   • Inline checkbox the user can flip directly (live-bound to
-//     setLowPolyMode) — mirrors the smartphone hint card's pattern
-//   • ✕ button at top-right to dismiss
-//   • Guidance line pointing at the FPS badge as the permanent
-//     location for this toggle
-window.showIPadLargeFileHint = function(mb){
-  const old = document.getElementById('ipad-largefile-hint');
-  if(old) old.remove();
-  const card = document.createElement('div');
-  card.id = 'ipad-largefile-hint';
-  card.style.cssText =
-    'position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:160;' +
-    'background:rgba(20,20,22,.97);border:1px solid rgba(120,200,255,.55);' +
-    'border-radius:12px;padding:14px 16px;max-width:440px;' +
-    'box-shadow:0 8px 24px rgba(0,0,0,.6);' +
-    'color:#cfe8ff;font-size:.86em;line-height:1.5;letter-spacing:.02em;' +
-    'font-family:inherit;pointer-events:auto;' +
-    'transition:opacity .35s ease;';
-  const lang = (window._lang === 'en') ? 'en' : 'ja';
-  const title    = (lang === 'en')
-    ? '📦 Loaded at full quality (' + (mb||0) + ' MB)'
-    : '📦 フル品質で読み込みました(' + (mb||0) + ' MB)';
-  const headline = (lang === 'en')
-    ? 'If performance feels heavy, turn ON "Halve splats".'
-    : '動作が重い場合は「ポリゴン半減」を ON';
-  const cbLbl    = (lang === 'en') ? 'Halve splats' : 'ポリゴン半減';
-  const hint     = (lang === 'en')
-    ? 'You can also toggle this anytime from the top-right FPS badge.'
-    : 'この設定は右上の FPS 表示ボタンからも切り替えられます。';
-  const dismissLbl = (lang === 'en') ? 'Dismiss' : '閉じる';
-  const checked = (_splatStride() >= 2) ? 'checked' : '';
-  card.innerHTML =
-    // Title row (file size) + close button
-    '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;">' +
-      '<div style="flex:1;font-weight:600;color:#e6f4ff;">' + title + '</div>' +
-      '<button id="iplh-x" aria-label="' + dismissLbl + '" ' +
-        'style="background:transparent;border:none;color:rgba(207,232,255,.7);' +
-        'font-size:1.2em;line-height:1;cursor:pointer;padding:2px 4px;' +
-        'border-radius:4px;margin:-2px -4px 0 0;">✕</button>' +
-    '</div>' +
-    // Headline
-    '<div style="font-size:.95em;color:rgba(207,232,255,.92);margin-bottom:10px;">' +
-      '⚡ ' + headline +
-    '</div>' +
-    // Inline checkbox (live-bound)
-    '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;' +
-      'padding:6px 9px;margin:4px 0 10px;border-radius:8px;' +
-      'background:rgba(120,200,255,.10);border:1px solid rgba(120,200,255,.35);' +
-      'user-select:none;">' +
-      '<input type="checkbox" id="iplh-cb" ' + checked + ' ' +
-        'style="accent-color:#5bb0ff;cursor:pointer;width:17px;height:17px;">' +
-      '<span style="font-size:.95em;color:#cbe8ff;font-weight:500;">' +
-        '🎚 ' + cbLbl + '</span>' +
-    '</label>' +
-    // Guidance line
-    '<div style="font-size:.8em;color:rgba(207,232,255,.6);line-height:1.4;' +
-      'padding-top:6px;border-top:1px dashed rgba(120,200,255,.22);">' +
-      '💡 ' + hint +
-    '</div>';
-  document.body.appendChild(card);
-  const dismiss = ()=>{
-    card.style.opacity = '0';
-    setTimeout(()=>{ if(card.parentNode) card.remove(); }, 400);
-  };
-  const xBtn = card.querySelector('#iplh-x');
-  const cb   = card.querySelector('#iplh-cb');
-  if(xBtn) xBtn.addEventListener('click', dismiss);
-  if(cb){
-    cb.addEventListener('change', ()=>{
-      try { window.setLowPolyMode(!!cb.checked); } catch(_){}
-      // Sync the quality-panel and smartphone-hint checkboxes if present.
-      const panelCb = document.getElementById('lowpoly-toggle');
-      if(panelCb) panelCb.checked = !!cb.checked;
-      const phCb = document.getElementById('lph-cb');
-      if(phCb) phCb.checked = !!cb.checked;
-    });
-  }
-  // Auto-dismiss after 18 s — denser text + checkbox means the user
-  // needs a touch longer to read, but we don't want it lingering forever.
-  setTimeout(dismiss, 18000);
-};
-
+// Universal perf hint card — see showLowPolyHint() below. The previous
+// iPad-specific top-center popup was unified into the single bottom-left
+// card to keep one consistent UX surface across all devices.
 window.showLowPolyHint = function(){
   const old = document.getElementById('lowpoly-hint');
   if(old) old.remove();
   const card = document.createElement('div');
   card.id = 'lowpoly-hint';
+  // Position: bottom-left. On touch devices the joystick sits in the
+  // bottom-left so we lift the card to bottom: 230 px. On desktop
+  // there's no joystick — sit just above the bottom-left corner at
+  // bottom: 24 px. The left offset uses --lp-width so the card clears
+  // the scene-layer panel when it's expanded.
+  const _isTouch = window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
+  const _bottomPx = _isTouch ? 230 : 24;
   card.style.cssText =
-    'position:fixed;left:18px;bottom:230px;z-index:140;' +
+    'position:fixed;' +
+    'left:calc(var(--lp-width,0px) + 18px);' +
+    'bottom:' + _bottomPx + 'px;z-index:140;' +
     'background:rgba(20,20,22,.96);border:1px solid rgba(255,180,84,.55);' +
-    'border-radius:10px;padding:11px 14px 12px;max-width:280px;' +
+    'border-radius:10px;padding:11px 14px 12px;max-width:300px;' +
     'box-shadow:0 6px 18px rgba(0,0,0,.55);' +
-    'color:#ffe4b3;font-size:.8em;line-height:1.45;letter-spacing:.02em;' +
+    'color:#ffe4b3;font-size:.82em;line-height:1.45;letter-spacing:.02em;' +
     'font-family:inherit;pointer-events:auto;' +
     'transition:opacity .35s ease;';
   const lang = (window._lang === 'en') ? 'en' : 'ja';
@@ -6977,29 +6902,16 @@ async function loadSplatFile(file){
         showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
       }
     }
-    // Big-file behaviour split by device:
-    //   • iPhone / desktop, > 300 MB : seed localStorage = '2' so the
-    //       polygon-halve toggle visibly flips ON for future loads
-    //       (and iPhone additionally escalates this load to stride 4
-    //       inside maybeDecimateSplatBuffer to fit memory).
-    //   • iPad,            > 300 MB : load at FULL quality, then show
-    //       an explanatory popup telling the user they can halve from
-    //       the top-right FPS badge if the scene feels heavy. iPads
-    //       have plenty of memory; pre-halving sacrificed visible
-    //       fidelity without need.
+    // Big-file (> 300 MB) auto-tuning, device-specific:
+    //   • iPhone / desktop : seed localStorage = '2' so the polygon-halve
+    //       toggle visibly flips ON for future loads (iPhone additionally
+    //       escalates THIS load to stride 4 inside
+    //       maybeDecimateSplatBuffer to fit memory).
+    //   • iPad             : load at FULL quality, no seed. The universal
+    //       bottom-left hint card (showLowPolyHint, triggered later
+    //       below) is the only nudge the user gets.
     if((ext === 'ply' || ext === 'splat') && file && file.size > 300*1024*1024){
-      if(typeof _isIPad !== 'undefined' && _isIPad){
-        // iPad: full-quality load + explanatory popup (session-once).
-        try {
-          if(!sessionStorage.getItem('locahun_ipad_largefile_hint_shown')){
-            sessionStorage.setItem('locahun_ipad_largefile_hint_shown', '1');
-            if(typeof showIPadLargeFileHint === 'function'){
-              const mb = Math.round(file.size / 1024 / 1024);
-              showIPadLargeFileHint(mb);
-            }
-          }
-        } catch(_){}
-      } else {
+      if(!(typeof _isIPad !== 'undefined' && _isIPad)){
         // iPhone + desktop: seed the polygon-halve preference ON.
         try {
           if(localStorage.getItem('locahun_splat_stride') == null){
@@ -7148,15 +7060,14 @@ async function loadSplatFile(file){
     if(typeof window._scheduleQualityProbe === 'function'){
       window._scheduleQualityProbe();
     }
-    // Touch-device hint: surface the "ポリゴン半減" performance lever once
-    // the user has actually opened a scene. The toggle lives inside the
-    // quality panel which isn't visible until the user opens it, so users
-    // on heavy iPad / iPhone scenes wouldn't otherwise discover it.
-    // Persists per-session via sessionStorage so we don't nag the user
-    // every time they load a different file.
+    // Universal "ポリゴン半減" hint card. Shown on every device (touch and
+    // desktop) once per session after the first scene loads, so users
+    // discover the toggle without having to open the quality panel.
+    // The card sits at bottom-left, carries an inline checkbox bound to
+    // setLowPolyMode, plus a ✕ at top-right. sessionStorage gate keeps
+    // it from re-appearing on every file load.
     try {
-      const isTouch = window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
-      if(isTouch && !sessionStorage.getItem('locahun_lowpoly_hint_shown')){
+      if(!sessionStorage.getItem('locahun_lowpoly_hint_shown')){
         sessionStorage.setItem('locahun_lowpoly_hint_shown', '1');
         if(typeof showLowPolyHint === 'function') showLowPolyHint();
       }
