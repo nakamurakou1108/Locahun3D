@@ -880,11 +880,12 @@ body{position:fixed;top:0;left:0;}
      own responsive layout). The stub div with id="cam-shot-panel" stays
      in the DOM purely for back-compat with code that null-guards it via
      getElementById, so we don't need to style it anymore. */
-  /* Touch-device cbar: hide buttons that aren't useful on iPad/phones —
-     測定 (precision pointer required), 🗺 マップ (the minimap is a desktop
-     editing aid), and ❓ マニュアル (full keyboard-shortcut manual is
-     desktop-only). カメラ / 環境 / 画質 / 設定 stay visible. */
-  #btnMeasure,
+  /* Touch-device cbar: 測定 is now visible on iPad / iPhone too (per
+     user request — tap-to-place + tap-to-place works fine without a
+     precision pointer). 🗺 マップ and ❓ マニュアル stay hidden:
+     the minimap is a desktop editing aid that doesn't fit a phone's
+     thumb-driven UX, and the full keyboard-shortcut manual is meant
+     for desktop. カメラ / 環境 / 画質 / 設定 stay visible. */
   #btnMinimap,
   #btnHelp { display:none !important; }
 }
@@ -8166,7 +8167,13 @@ async function _arEnter(){
   });
   const geom = new THREE.PlaneGeometry(2, 2);
   const mesh = new THREE.Mesh(geom, mat);
-  mesh.renderOrder = -9999;
+  // Render order MUST be below the env dome's (-10000) so that when the
+  // user has an env preset selected the dome paints OVER the camera
+  // image and gives them sky-as-background; otherwise the camera quad
+  // overwrites the dome's pixels and the user sees the camera no matter
+  // what 環境 preset they picked. Use -1e6 to leave generous headroom
+  // for any future "draw earlier than env" widgets.
+  mesh.renderOrder = -1000000;
   mesh.frustumCulled = false;
   mesh.matrixAutoUpdate = false;
   scene.add(mesh);
