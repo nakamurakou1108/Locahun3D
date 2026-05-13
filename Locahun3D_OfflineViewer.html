@@ -1192,14 +1192,11 @@ body{position:fixed;top:0;left:0;}
        query that hides other touch-only widgets. -->
   <button id="btnAR" onclick="toggleARMode()" style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;white-space:nowrap;display:none;" title="AR モード（背面カメラ越しに 3DGS を重ねて表示）">📱 <span id="lbl-ar">AR</span></button>
 </div>
-<!-- AR mode: camera-passthrough backdrop video. The previous floating
-     top-right exit overlay was removed because it overlapped the FPS /
-     quality badge (#qi-badge). Exit is now triggered by tapping the
-     #btnAR button itself — toggleARMode() swaps its label to "AR 終了"
-     and applies the .on (red) state while AR is active. -->
-<video id="ar-video" autoplay muted playsinline webkit-playsinline
-  style="display:none;position:fixed;inset:0;width:100%;height:100%;
-         object-fit:cover;z-index:-1;background:#000;pointer-events:none;"></video>
+<!-- AR mode: WebGL-integrated camera passthrough. The off-screen video
+     element used to feed Three.js VideoTexture is created on demand by
+     _arEnter() (no static DOM element needed) so it doesn't sit idle
+     when AR is off. Exit is triggered by tapping the #btnAR button —
+     toggleARMode() swaps its label to "AR 終了" + red state. -->
 <div id="topbar">
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
     <button id="tb-save-btn" onclick="saveProjectZip()" style="background:rgba(100,255,150,.08);border:1px solid rgba(100,255,150,.2);color:rgba(100,255,150,.7);border-radius:5px;padding:2px 8px;font-size:.72em;cursor:pointer;transition:all .15s;white-space:nowrap" onmouseover="this.style.background='rgba(100,255,150,.18)'" onmouseout="this.style.background='rgba(100,255,150,.08)'" title="ZIP Save">💾 <span id="tb-save-lbl">保存</span></button>
@@ -1241,7 +1238,7 @@ body{position:fixed;top:0;left:0;}
       background:linear-gradient(to bottom, rgba(255,180,84,.06), transparent)">
       <div style="display:flex;align-items:baseline;gap:14px">
         <strong style="font-size:1.25em;letter-spacing:.04em" data-i18n-key="manual-title">📖 ロケハン3D ユーザーマニュアル</strong>
-        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.0.1-alpha.1 / 3DGS マルチビューア + プリビズ (αテスト版)</span>
+        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.0.1-alpha.2 / 3DGS マルチビューア + プリビズ (αテスト版)</span>
       </div>
       <button onclick="closeManual()" style="background:transparent;border:1px solid rgba(255,255,255,.12);
         color:#aab;border-radius:6px;padding:6px 12px;font-size:.92em;cursor:pointer;font-family:inherit"
@@ -2438,21 +2435,14 @@ body{position:fixed;top:0;left:0;}
   0%,100%{box-shadow:0 0 0 0 rgba(255,90,80,0);}
   50%   {box-shadow:0 0 0 5px rgba(255,90,80,.22);}
 }
-/* In AR mode the page background must show through so the rear-camera
-   video (z-index:-1) is visible. The viewer's normal black background lives
-   on <html>/<body>; the body.ar-active overrides drop it to transparent so
-   the WebGL canvas (drawn with clearAlpha:0) composites over the video. */
-body.ar-active{background:transparent !important;}
-body.ar-active #c{background:transparent !important;}
+/* AR mode (WebGL-integrated camera passthrough): the canvas is OPAQUE
+   because the camera feed is drawn inside the WebGL scene as a fullscreen
+   quad. We just need to hide the motion-vignette (which would fight the
+   gyro-rotated background) and the dropzone visuals (which would block
+   the camera feed). The canvas itself is left alone — no transparency
+   needed since composition happens in WebGL. */
 body.ar-active #motion-vignette{display:none !important;}
-/* Letterbox bars + dropzone visuals would block the camera feed if visible. */
 body.ar-active #dz{display:none !important;}
-/* AR v2 (WebGL-integrated passthrough): canvas is OPAQUE — the video is
-   drawn inside the WebGL scene as a fullscreen quad, so we do NOT want
-   the body/canvas to be transparent. The vignette would also fight the
-   gyro-rotated background. Dropzone hidden same as V1 to free up view. */
-body.ar-active-v2 #motion-vignette{display:none !important;}
-body.ar-active-v2 #dz{display:none !important;}
 </style>
 
 <!-- Drop zone (REEL — ASPECT FRAMES) -->
@@ -2502,7 +2492,7 @@ body.ar-active-v2 #dz{display:none !important;}
     <div class="dz-changelog-body" id="dz-changelog-body" hidden>
       <div class="cl-entry">
         <div class="cl-entry-head">
-          <span class="cl-ver">v 0.0.1-alpha.1</span>
+          <span class="cl-ver">v 0.0.1-alpha.2</span>
           <span class="cl-date">2026-05-09</span>
           <span class="cl-tag" id="cl-tag-init">初版</span>
         </div>
@@ -2524,7 +2514,7 @@ body.ar-active-v2 #dz{display:none !important;}
     </div>
   </div>
   <div class="dz-version-line">
-    <span id="tb-version">v 0.0.1-alpha.1</span>
+    <span id="tb-version">v 0.0.1-alpha.2</span>
   </div>
 </div>
 
@@ -7930,29 +7920,28 @@ function _avatarWalkExit(){
 }
 
 // ══════════════════════════════════════════════════
-//  AR MODE (camera passthrough + device orientation)
+//  AR MODE — WebGL-integrated camera passthrough
 // ══════════════════════════════════════════════════
 // Pragmatic AR for iPad / iPhone (and Android tablets / phones). WebXR
 // `immersive-ar` is Android-Chrome-only; iOS Safari has no WebXR. So we
-// implement a manual passthrough: rear camera → fullscreen <video> behind
-// a transparent renderer canvas, with DeviceOrientation driving yaw/pitch.
+// implement a manual passthrough: rear camera → THREE.VideoTexture
+// rendered as a fullscreen quad INSIDE the WebGL scene, with the canvas
+// kept OPAQUE. One compositor layer to blend, plus we own the visual
+// integration (color, orientation, fit). This is the integrated approach
+// promoted from the experimental V2 path in earlier versions; the older
+// translucent-canvas + <video> overlay variant was retired after iPad
+// testing showed it never escaped iOS Safari's compositor rAF throttle.
+//
+// Trade-off: every frame we pay `texImage2D(HTMLVideoElement)` upload
+// cost, which iOS Safari sometimes does synchronously. Mitigated by
+// hard-capping the camera stream to 640×360 / 15 fps in the
+// getUserMedia() constraint below.
+//
 // User can still walk via the on-screen joystick AND drag-to-recenter
 // the view by touching the right-half of the canvas — the touch handler
 // (search "Touch look") detects AR mode and shifts arMode.baselineYaw /
 // baselinePitch so the gyro keeps tracking but with a user offset.
-const arMode = {
-  active: false,
-  video: null,
-  stream: null,
-  orientHandler: null,
-  baseYaw: 0,            // camera yaw at AR-entry — preserved so the scene
-                          // doesn't snap to compass-north when AR starts
-  baselineYaw: 0,        // gyro-derived yaw at AR-entry (delta reference)
-  baselinePitch: 0,      // pitch baseline — touch drag shifts this so the
-                          // user can re-center the view while gyro is active
-  baselineCaptured: false,
-  _savedPixelRatio: null, // renderer pixel-ratio at AR entry, restored on exit
-};
+
 // Re-used scratch primitives so the 60 Hz orientation handler doesn't
 // thrash GC.
 const _arEulerScratch = new THREE.Euler();
@@ -7962,32 +7951,7 @@ const _arQuatOrient   = new THREE.Quaternion();
 const _arForwardScratch = new THREE.Vector3();
 const _arZAxis = new THREE.Vector3(0, 0, 1);
 
-// AR variant selector: V1 (default) is the layered <video> + transparent
-// canvas approach. V2 is the WebGL-integrated experimental path — the
-// camera feed becomes a Three.js VideoTexture rendered as a fullscreen
-// quad inside the same WebGL canvas. Goal: bypass iOS Safari's compositor
-// throttle that pins V1 to ~8 fps on iPad. Activated via ?ar=v2.
-function _arVariant(){
-  try {
-    const m = location.search.match(/[?&]ar(?:mode)?=([\w-]+)/i);
-    if(m && /^(v2|integrated|webgl|gl)$/i.test(m[1])) return 'v2';
-  } catch(_){}
-  return 'v1';
-}
-
 window.toggleARMode = function(){
-  // Dispatch to V1 or V2 depending on URL flag. Both share the same
-  // #btnAR button and the same red "AR 終了" toggle visual; only the
-  // render strategy differs.
-  if(_arVariant() === 'v2'){
-    if(arModeV2.active){ _arExitV2(); return; }
-    _arEnterV2().catch(e=>{
-      console.error('[AR-v2] enter failed', e);
-      if(typeof showUndoToast==='function') showUndoToast(T('ar-permission-denied'));
-      _arExitV2();
-    });
-    return;
-  }
   if(arMode.active){ _arExit(); return; }
   _arEnter().catch(e=>{
     console.error('[AR] enter failed', e);
@@ -7996,271 +7960,7 @@ window.toggleARMode = function(){
   });
 };
 
-async function _arEnter(){
-  // Basic capability check
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    showUndoToast(T('ar-unsupported'));
-    return;
-  }
-  // iOS 13+ requires explicit user-gesture-triggered permission for
-  // DeviceOrientationEvent. Android / desktop browsers fire without it.
-  if(typeof DeviceOrientationEvent !== 'undefined' &&
-     typeof DeviceOrientationEvent.requestPermission === 'function'){
-    try {
-      const r = await DeviceOrientationEvent.requestPermission();
-      if(r !== 'granted'){
-        showUndoToast(T('ar-permission-denied'));
-        return;
-      }
-    } catch(e){ /* non-iOS path: keep going */ }
-  }
-  // Request rear-facing camera. `ideal:'environment'` lets browsers without
-  // a back camera (e.g. desktops with only a webcam) still grant the front
-  // cam rather than failing outright. We HARD-CAP the requested resolution
-  // at MINIMUM viable resolution / frame rate on touch devices. The camera
-  // feed is just a backdrop the WebGL canvas composites over — sharpness
-  // past 640×360 is wasted while the iOS compositor pays linearly for
-  // every extra pixel AND `texImage2D(HTMLVideoElement)` in the V2 path
-  // pays per-frame for upload bandwidth. 15 fps halves that upload load
-  // again. Using `max` (not `exact`) so devices that can't physically
-  // produce 640×360 still negotiate down rather than failing.
-  //   width  : 640 max  (360p-ish in 16:9)
-  //   height : 360 max
-  //   frameRate: 15 max
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width:  { ideal: 640, max: 640 },
-        height: { ideal: 360, max: 360 },
-        frameRate: { ideal: 15, max: 15 },
-      },
-      audio: false,
-    });
-  } catch(e){
-    console.warn('[AR] getUserMedia failed, retrying without resolution hints:', e);
-    // Some Android devices reject explicit constraints; fall back to a
-    // bare `environment` request so AR still works rather than failing.
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      });
-    } catch(e2){
-      console.warn('[AR] getUserMedia retry failed:', e2);
-      showUndoToast(T('ar-permission-denied'));
-      return;
-    }
-  }
-  // Belt-and-suspenders: if the negotiated track came back larger than our
-  // 640×360 / 15 fps cap (some iOS versions ignore `max` on the first
-  // negotiation), apply a track-level constraint to clamp it. No-op when
-  // the device already honoured the original constraint.
-  try {
-    const track = stream.getVideoTracks()[0];
-    if(track && typeof track.applyConstraints === 'function'){
-      const s = track.getSettings ? track.getSettings() : {};
-      if((s.width || 0) > 640 || (s.height || 0) > 360 || (s.frameRate || 0) > 15){
-        await track.applyConstraints({
-          width:  { max: 640 },
-          height: { max: 360 },
-          frameRate: { max: 15 },
-        }).catch(()=>{});
-      }
-    }
-  } catch(_){}
-  // Mount the camera stream in the backdrop <video> element
-  const video = document.getElementById('ar-video');
-  if(!video){
-    showUndoToast(T('ar-unsupported'));
-    stream.getTracks().forEach(t=>t.stop());
-    return;
-  }
-  video.srcObject = stream;
-  video.style.display = 'block';
-  try { await video.play(); } catch(e){ /* autoplay should kick in via muted */ }
-  arMode.video = video;
-  arMode.stream = stream;
-  // Make the WebGL canvas transparent so the video composites underneath.
-  // Saved color is restored on exit. We don't touch scene.background — it's
-  // null by default in this viewer, and the renderer clear color provides
-  // the visible black.
-  if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(0);
-  // Hide the environment dome while AR is active. The dome is a fullscreen
-  // sphere wrapping the camera with whichever sky preset the user picked
-  // (朝・昼・夕方・夜 / etc.). With the canvas transparent for AR, the
-  // dome's solid sky color would otherwise OBSCURE the camera passthrough
-  // — the user reported this as "AR にしたとき環境がカメラ画面になってしまう".
-  if(env && env.mesh){
-    arMode._envWasVisible = !!env.mesh.visible;
-    env.mesh.visible = false;
-  }
-  document.body.classList.add('ar-active');
-  // iOS Safari compositor cost scales steeply with pixel count when a live
-  // <video> and a transparent WebGL canvas are stacked (the rAF clamp that
-  // pinned iPad to ~8 fps with 0.47 ms GPU submit was almost entirely
-  // composition cost, not draw work). Half the pixels = roughly half the
-  // composition workload, with no visible quality loss because the
-  // background is a noisy live camera feed anyway. Apply immediately
-  // (bypass the watchdog's 600 ms idle gate) so the user feels the
-  // smoother frame rate the moment they enter AR. Saved on entry so we
-  // can restore the pre-AR ratio on exit.
-  try {
-    arMode._savedPixelRatio = renderer.getPixelRatio();
-    const arPR = Math.min(arMode._savedPixelRatio, 1.0);
-    renderer.setPixelRatio(arPR);
-  } catch(_){}
-  // Capture yaw at entry so the gyro deltas apply relative to current view
-  // (otherwise the scene snaps to wherever the phone happens to point first).
-  arMode.baseYaw = yaw;
-  arMode.baselineCaptured = false;
-  // Device orientation → yaw/pitch via the standard THREE.DeviceOrientation
-  // formula. We feed _yawTarget / _pitchTarget so the existing camera-update
-  // path applies them with the same smoothing as mouse/joystick input.
-  arMode.orientHandler = function(ev){
-    if(ev.alpha == null || ev.beta == null) return;
-    const orient = (screen.orientation && screen.orientation.angle != null)
-                  ? screen.orientation.angle
-                  : (window.orientation || 0);
-    const orientRad = orient * Math.PI / 180;
-    const alpha = ev.alpha * Math.PI / 180;
-    const beta  = ev.beta  * Math.PI / 180;
-    const gamma = ev.gamma!=null ? ev.gamma * Math.PI / 180 : 0;
-    _arEulerScratch.set(beta, alpha, -gamma, 'YXZ');
-    _arQuatScratch.setFromEuler(_arEulerScratch);
-    _arQuatScratch.multiply(_arQuatScreenAdjust);
-    _arQuatOrient.setFromAxisAngle(_arZAxis, -orientRad);
-    _arQuatScratch.multiply(_arQuatOrient);
-    // Convert quaternion to a look-forward vector, then extract yaw / pitch.
-    _arForwardScratch.set(0,0,-1).applyQuaternion(_arQuatScratch);
-    const yawNew   = Math.atan2(-_arForwardScratch.x, -_arForwardScratch.z);
-    const pitchNew = Math.asin(Math.max(-1, Math.min(1, _arForwardScratch.y)));
-    if(!arMode.baselineCaptured){
-      arMode.baselineYaw = yawNew;
-      arMode.baselinePitch = pitchNew;
-      arMode.baselineCaptured = true;
-      return;
-    }
-    // _yawTarget = device-yaw delta from baseline + entry-yaw offset
-    // _pitchTarget = device-pitch shifted by touch-adjustable pitch baseline
-    // Touch drag handlers nudge baselineYaw / baselinePitch so the user
-    // can recenter while the gyro keeps tracking.
-    const newYawTarget   = arMode.baseYaw + (yawNew - arMode.baselineYaw);
-    const newPitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew - arMode.baselinePitch));
-    // Coalesce: only mark dirty when the orientation actually changed by
-    // a perceptible amount (~0.1°). The deviceorientation event fires at
-    // up to 100 Hz on iOS — calling markDirty() on every event keeps the
-    // renderer in continuous-render mode and prevents Safari's compositor
-    // from settling, which on iPad caps rAF at 8–15 fps even when the GPU
-    // is mostly idle. Below the threshold we still update the targets so
-    // the next render reflects the freshest pose, but we don't force the
-    // animate loop to wake up just for sub-pixel jitter.
-    const ARGYRO_EPS = 0.0017;  // ~0.1°
-    const dyaw   = Math.abs(newYawTarget   - _yawTarget);
-    const dpitch = Math.abs(newPitchTarget - _pitchTarget);
-    _yawTarget   = newYawTarget;
-    _pitchTarget = newPitchTarget;
-    if(dyaw > ARGYRO_EPS || dpitch > ARGYRO_EPS){
-      markDirty(2);
-    }
-  };
-  window.addEventListener('deviceorientation', arMode.orientHandler, true);
-  // UI state — swap the AR button into "AR 終了" mode (red, pulsing) so
-  // the user can hit the same button again to exit. The previous floating
-  // top-right exit overlay overlapped the FPS / quality badge, so the
-  // exit affordance now lives on #btnAR itself.
-  const btn = document.getElementById('btnAR');
-  if(btn){
-    btn.classList.add('on');
-    btn.setAttribute('title', T('tt-ar-exit') || 'AR モードを終了');
-    btn.blur();
-  }
-  const lbl = document.getElementById('lbl-ar');
-  if(lbl) lbl.textContent = T('lbl-ar-exit');
-  // Repurpose the leading emoji as a visual "stop" cue.
-  if(btn){
-    // The button's first child node is the "📱 " text; replace it.
-    for(const n of btn.childNodes){
-      if(n.nodeType === Node.TEXT_NODE){ n.textContent = '✕ '; break; }
-    }
-  }
-  arMode.active = true;
-  showUndoToast(T('ar-on'));
-  markDirty(10);
-}
-
-function _arExit(){
-  arMode.active = false;
-  // Stop camera tracks promptly so the indicator light goes out and
-  // permission state doesn't linger.
-  if(arMode.stream){
-    try { arMode.stream.getTracks().forEach(t=>t.stop()); } catch(e){}
-    arMode.stream = null;
-  }
-  if(arMode.video){
-    try { arMode.video.pause(); } catch(e){}
-    arMode.video.srcObject = null;
-    arMode.video.style.display = 'none';
-    arMode.video = null;
-  }
-  if(arMode.orientHandler){
-    window.removeEventListener('deviceorientation', arMode.orientHandler, true);
-    arMode.orientHandler = null;
-  }
-  arMode.baselineCaptured = false;
-  if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(1);
-  // Restore the environment dome's visibility (was hidden on entry so the
-  // sky preset wouldn't obscure the camera passthrough).
-  if(env && env.mesh && typeof arMode._envWasVisible === 'boolean'){
-    env.mesh.visible = arMode._envWasVisible;
-  }
-  arMode._envWasVisible = null;
-  // Restore the pre-AR pixel ratio. If for some reason the saved value
-  // is bogus, fall back to the standard tier-aware calculation.
-  try {
-    if(typeof arMode._savedPixelRatio === 'number' && arMode._savedPixelRatio > 0){
-      renderer.setPixelRatio(arMode._savedPixelRatio);
-    } else if(typeof _PR_CAP === 'number'){
-      renderer.setPixelRatio(Math.min(devicePixelRatio, _PR_CAP) * qualScale);
-    }
-  } catch(_){}
-  arMode._savedPixelRatio = null;
-  document.body.classList.remove('ar-active');
-  // Restore AR button to its idle "📱 AR" appearance.
-  const btn = document.getElementById('btnAR');
-  if(btn){
-    btn.classList.remove('on');
-    btn.setAttribute('title', T('tt-ar') || 'AR モード');
-    for(const n of btn.childNodes){
-      if(n.nodeType === Node.TEXT_NODE){ n.textContent = '📱 '; break; }
-    }
-    btn.blur();
-  }
-  const lbl = document.getElementById('lbl-ar');
-  if(lbl) lbl.textContent = T('lbl-ar');
-  showUndoToast(T('ar-off'));
-  markDirty(10);
-}
-
-// ══════════════════════════════════════════════════
-//  AR MODE V2 — WebGL-integrated camera passthrough (experimental)
-// ══════════════════════════════════════════════════
-// Hypothesis: iPad's 8 fps in V1 comes from iOS Safari's compositor
-// throttling rAF when it has to stack a translucent WebGL canvas over a
-// live <video> element. V2 eliminates the second layer: the camera feed
-// becomes a THREE.VideoTexture rendered as a fullscreen quad INSIDE the
-// WebGL scene, with the canvas kept opaque. Only one compositor layer to
-// blend, plus we own the visual integration (color, orientation, fit).
-//
-// Trade-off: every frame we pay `texImage2D(HTMLVideoElement)` upload
-// cost, which iOS Safari sometimes does synchronously. If that single
-// cost is < 16 ms we win big; if it's >> 16 ms we lose the win. Live
-// test on iPad will tell us. V1 stays the default so this experiment
-// can't break the production AR flow.
-//
-// Enabled via `?ar=v2` URL param. The #btnAR button auto-dispatches.
-const arModeV2 = {
+const arMode = {
   active: false,
   video: null,           // off-screen <video> (not in visual DOM)
   stream: null,
@@ -8278,7 +7978,7 @@ const arModeV2 = {
   _onMetadata: null,
 };
 
-async function _arEnterV2(){
+async function _arEnter(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     showUndoToast(T('ar-unsupported'));
     return;
@@ -8310,14 +8010,14 @@ async function _arEnterV2(){
       audio: false,
     });
   } catch(e){
-    console.warn('[AR-v2] getUserMedia failed, retrying:', e);
+    console.warn('[AR] getUserMedia failed, retrying:', e);
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
       });
     } catch(e2){
-      console.warn('[AR-v2] getUserMedia retry failed:', e2);
+      console.warn('[AR] getUserMedia retry failed:', e2);
       showUndoToast(T('ar-permission-denied'));
       return;
     }
@@ -8422,8 +8122,8 @@ async function _arEnterV2(){
 
   // ── Aspect / orientation uniform updater ──
   const updateUniforms = ()=>{
-    if(!arModeV2.bgMat) return;
-    const u = arModeV2.bgMat.uniforms;
+    if(!arMode.bgMat) return;
+    const u = arMode.bgMat.uniforms;
     const vw = video.videoWidth  || 1280;
     const vh = video.videoHeight || 720;
     u.canvasAR.value = innerWidth / Math.max(1, innerHeight);
@@ -8433,10 +8133,10 @@ async function _arEnterV2(){
                 : (window.orientation || 0);
     u.orientation.value = oDeg * Math.PI / 180;
   };
-  arModeV2._onMetadata = ()=>updateUniforms();
-  video.addEventListener('loadedmetadata', arModeV2._onMetadata);
+  arMode._onMetadata = ()=>updateUniforms();
+  video.addEventListener('loadedmetadata', arMode._onMetadata);
   updateUniforms();
-  arModeV2._updateUniforms = updateUniforms;
+  arMode._updateUniforms = updateUniforms;
   window.addEventListener('resize', updateUniforms);
   if(screen.orientation && screen.orientation.addEventListener){
     try { screen.orientation.addEventListener('change', updateUniforms); } catch(_){}
@@ -8446,24 +8146,24 @@ async function _arEnterV2(){
   // V1 (which had to cut the compositor cost via PR=1.0). Cap at 1.5 to
   // get sharper splats while still trimming texImage2D upload cost. ──
   try {
-    arModeV2._savedPixelRatio = renderer.getPixelRatio();
-    const v2PR = Math.min(arModeV2._savedPixelRatio, 1.5);
+    arMode._savedPixelRatio = renderer.getPixelRatio();
+    const v2PR = Math.min(arMode._savedPixelRatio, 1.5);
     renderer.setPixelRatio(v2PR);
   } catch(_){}
 
   // Hide env dome while AR is active — same reason as V1: a fullscreen
   // sky preset sphere would obscure the camera passthrough.
   if(env && env.mesh){
-    arModeV2._envWasVisible = !!env.mesh.visible;
+    arMode._envWasVisible = !!env.mesh.visible;
     env.mesh.visible = false;
   }
 
-  document.body.classList.add('ar-active-v2');
+  document.body.classList.add('ar-active');
 
   // ── Device-orientation handler (yaw + pitch) — same math as V1 ──
-  arModeV2.baseYaw = yaw;
-  arModeV2.baselineCaptured = false;
-  arModeV2.orientHandler = function(ev){
+  arMode.baseYaw = yaw;
+  arMode.baselineCaptured = false;
+  arMode.orientHandler = function(ev){
     if(ev.alpha == null || ev.beta == null) return;
     const orient = (screen.orientation && screen.orientation.angle != null)
                   ? screen.orientation.angle
@@ -8480,14 +8180,14 @@ async function _arEnterV2(){
     _arForwardScratch.set(0,0,-1).applyQuaternion(_arQuatScratch);
     const yawNew   = Math.atan2(-_arForwardScratch.x, -_arForwardScratch.z);
     const pitchNew = Math.asin(Math.max(-1, Math.min(1, _arForwardScratch.y)));
-    if(!arModeV2.baselineCaptured){
-      arModeV2.baselineYaw = yawNew;
-      arModeV2.baselinePitch = pitchNew;
-      arModeV2.baselineCaptured = true;
+    if(!arMode.baselineCaptured){
+      arMode.baselineYaw = yawNew;
+      arMode.baselinePitch = pitchNew;
+      arMode.baselineCaptured = true;
       return;
     }
-    const newYawTarget   = arModeV2.baseYaw + (yawNew - arModeV2.baselineYaw);
-    const newPitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew - arModeV2.baselinePitch));
+    const newYawTarget   = arMode.baseYaw + (yawNew - arMode.baselineYaw);
+    const newPitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew - arMode.baselinePitch));
     const ARGYRO_EPS = 0.0017;
     const dyaw   = Math.abs(newYawTarget   - _yawTarget);
     const dpitch = Math.abs(newPitchTarget - _pitchTarget);
@@ -8495,16 +8195,16 @@ async function _arEnterV2(){
     _pitchTarget = newPitchTarget;
     if(dyaw > ARGYRO_EPS || dpitch > ARGYRO_EPS) markDirty(2);
   };
-  window.addEventListener('deviceorientation', arModeV2.orientHandler, true);
+  window.addEventListener('deviceorientation', arMode.orientHandler, true);
 
   // ── Store handles + UI swap ──
-  arModeV2.video = video;
-  arModeV2.stream = stream;
-  arModeV2.videoTexture = tex;
-  arModeV2.bgMesh = mesh;
-  arModeV2.bgMat = mat;
-  arModeV2.bgGeom = geom;
-  arModeV2.active = true;
+  arMode.video = video;
+  arMode.stream = stream;
+  arMode.videoTexture = tex;
+  arMode.bgMesh = mesh;
+  arMode.bgMat = mat;
+  arMode.bgGeom = geom;
+  arMode.active = true;
 
   const btn = document.getElementById('btnAR');
   if(btn){
@@ -8517,59 +8217,59 @@ async function _arEnterV2(){
   }
   const lbl = document.getElementById('lbl-ar');
   if(lbl) lbl.textContent = T('lbl-ar-exit');
-  showUndoToast('📱 AR v2 (WebGL 統合) ON — 端末を傾けて視点を変えられます');
+  showUndoToast('📱 AR (WebGL 統合) ON — 端末を傾けて視点を変えられます');
   markDirty(10);
 }
 
-function _arExitV2(){
-  arModeV2.active = false;
-  if(arModeV2.stream){
-    try { arModeV2.stream.getTracks().forEach(t=>t.stop()); } catch(_){}
-    arModeV2.stream = null;
+function _arExit(){
+  arMode.active = false;
+  if(arMode.stream){
+    try { arMode.stream.getTracks().forEach(t=>t.stop()); } catch(_){}
+    arMode.stream = null;
   }
-  if(arModeV2.video){
-    try { arModeV2.video.pause(); } catch(_){}
-    if(arModeV2._onMetadata){
-      try { arModeV2.video.removeEventListener('loadedmetadata', arModeV2._onMetadata); } catch(_){}
+  if(arMode.video){
+    try { arMode.video.pause(); } catch(_){}
+    if(arMode._onMetadata){
+      try { arMode.video.removeEventListener('loadedmetadata', arMode._onMetadata); } catch(_){}
     }
-    arModeV2.video.srcObject = null;
-    if(arModeV2.video.parentNode) arModeV2.video.parentNode.removeChild(arModeV2.video);
-    arModeV2.video = null;
+    arMode.video.srcObject = null;
+    if(arMode.video.parentNode) arMode.video.parentNode.removeChild(arMode.video);
+    arMode.video = null;
   }
-  arModeV2._onMetadata = null;
-  if(arModeV2.bgMesh){
-    try { scene.remove(arModeV2.bgMesh); } catch(_){}
-    arModeV2.bgMesh = null;
+  arMode._onMetadata = null;
+  if(arMode.bgMesh){
+    try { scene.remove(arMode.bgMesh); } catch(_){}
+    arMode.bgMesh = null;
   }
-  if(arModeV2.bgMat){ try { arModeV2.bgMat.dispose(); } catch(_){} arModeV2.bgMat = null; }
-  if(arModeV2.bgGeom){ try { arModeV2.bgGeom.dispose(); } catch(_){} arModeV2.bgGeom = null; }
-  if(arModeV2.videoTexture){ try { arModeV2.videoTexture.dispose(); } catch(_){} arModeV2.videoTexture = null; }
-  if(arModeV2.orientHandler){
-    window.removeEventListener('deviceorientation', arModeV2.orientHandler, true);
-    arModeV2.orientHandler = null;
+  if(arMode.bgMat){ try { arMode.bgMat.dispose(); } catch(_){} arMode.bgMat = null; }
+  if(arMode.bgGeom){ try { arMode.bgGeom.dispose(); } catch(_){} arMode.bgGeom = null; }
+  if(arMode.videoTexture){ try { arMode.videoTexture.dispose(); } catch(_){} arMode.videoTexture = null; }
+  if(arMode.orientHandler){
+    window.removeEventListener('deviceorientation', arMode.orientHandler, true);
+    arMode.orientHandler = null;
   }
-  if(arModeV2._updateUniforms){
-    try { window.removeEventListener('resize', arModeV2._updateUniforms); } catch(_){}
+  if(arMode._updateUniforms){
+    try { window.removeEventListener('resize', arMode._updateUniforms); } catch(_){}
     if(screen.orientation && screen.orientation.removeEventListener){
-      try { screen.orientation.removeEventListener('change', arModeV2._updateUniforms); } catch(_){}
+      try { screen.orientation.removeEventListener('change', arMode._updateUniforms); } catch(_){}
     }
-    arModeV2._updateUniforms = null;
+    arMode._updateUniforms = null;
   }
   try {
-    if(typeof arModeV2._savedPixelRatio === 'number' && arModeV2._savedPixelRatio > 0){
-      renderer.setPixelRatio(arModeV2._savedPixelRatio);
+    if(typeof arMode._savedPixelRatio === 'number' && arMode._savedPixelRatio > 0){
+      renderer.setPixelRatio(arMode._savedPixelRatio);
     } else if(typeof _PR_CAP === 'number'){
       renderer.setPixelRatio(Math.min(devicePixelRatio, _PR_CAP) * qualScale);
     }
   } catch(_){}
-  arModeV2._savedPixelRatio = null;
-  arModeV2.baselineCaptured = false;
+  arMode._savedPixelRatio = null;
+  arMode.baselineCaptured = false;
   // Restore env dome visibility (was hidden on AR-v2 entry).
-  if(env && env.mesh && typeof arModeV2._envWasVisible === 'boolean'){
-    env.mesh.visible = arModeV2._envWasVisible;
+  if(env && env.mesh && typeof arMode._envWasVisible === 'boolean'){
+    env.mesh.visible = arMode._envWasVisible;
   }
-  arModeV2._envWasVisible = null;
-  document.body.classList.remove('ar-active-v2');
+  arMode._envWasVisible = null;
+  document.body.classList.remove('ar-active');
   const btn = document.getElementById('btnAR');
   if(btn){
     btn.classList.remove('on');
@@ -12375,8 +12075,7 @@ let _lastRenderYaw   = 0;
 let _lastRenderPitch = 0;
 function _applyCanvasReprojection(){
   if(!_reprojectionEnabled) return;
-  if((typeof arMode   !== 'undefined' && arMode   && arMode.active) ||
-     (typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active)) return;
+  if(typeof arMode !== 'undefined' && arMode && arMode.active) return;
   if(!canvas || !camera) return;
   // FOV (radians) — vertical from camera.fov, horizontal derived via aspect
   const fovV = camera.fov * Math.PI / 180;
@@ -12694,8 +12393,7 @@ function animate(now) {
   // layer is loaded the inner loop and the layers[] iteration both become
   // no-ops. Counter is bumped in addLayer / removed in remove paths.
   if (motion && window._activeSplatCount &&
-      !(typeof arMode   !== 'undefined' && arMode   && arMode.active) &&
-      !(typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active)) {
+      !(typeof arMode !== 'undefined' && arMode && arMode.active)) {
     // In AR mode (either variant) the gyro nudges yaw/pitch on every
     // device-orientation event (~60–100 Hz), so `motion` is true
     // essentially every frame. Calling sm.update(camera) per layer at
@@ -12733,8 +12431,7 @@ function animate(now) {
   // by input handlers since the last render must be cleared and the
   // reference yaw/pitch advanced. Cheap (one DOM write per frame).
   if(_reprojectionEnabled &&
-     !((typeof arMode   !== 'undefined' && arMode   && arMode.active) ||
-       (typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active))){
+     !(typeof arMode !== 'undefined' && arMode && arMode.active)){
     _lastRenderYaw   = yaw;
     _lastRenderPitch = pitch;
     if(canvas && canvas.style.transform) canvas.style.transform = '';
@@ -12847,8 +12544,7 @@ function animate(now) {
         }
       }
     } else if(_ftAvg < 11 && _wallMsAvg < 14 && qualScale < _qualPreferred - 0.001 &&
-              !(typeof arMode   !== 'undefined' && arMode   && arMode.active) &&
-              !(typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active)){
+              !(typeof arMode !== 'undefined' && arMode && arMode.active)){
       // While EITHER AR variant is active we intentionally hold the
       // pixel-ratio at the AR-entry override so iOS Safari compositor /
       // texImage2D cost stays manageable. Letting the watchdog up-step
@@ -14898,7 +14594,7 @@ Object.assign(I18N.ja,{
   'lbl-rot':'角度',
   'tt-edit-dbl':'ダブルクリックで編集',
   'manual-title':'📖 ロケハン3D ユーザーマニュアル',
-  'manual-version':'v 0.0.1-alpha.1 / 3DGS マルチビューア + プリビズ (αテスト版)',
+  'manual-version':'v 0.0.1-alpha.2 / 3DGS マルチビューア + プリビズ (αテスト版)',
   'manual-close':'閉じる ✕',
   'manual-grp-quick':'クイックスタート',
   'manual-grp-basic':'基本操作',
@@ -15140,7 +14836,7 @@ Object.assign(I18N.en,{
   'lbl-rot':'Angle',
   'tt-edit-dbl':'Double-click to edit',
   'manual-title':'📖 LOCAHUN 3D User Manual',
-  'manual-version':'v 0.0.1-alpha.1 / 3DGS multi-viewer + previz (Alpha)',
+  'manual-version':'v 0.0.1-alpha.2 / 3DGS multi-viewer + previz (Alpha)',
   'manual-close':'Close ✕',
   'manual-grp-quick':'QUICK START',
   'manual-grp-basic':'BASICS',
@@ -15675,14 +15371,10 @@ canvas.addEventListener('touchmove',e=>{
       // on top of live device orientation, exactly the way "drag-to-
       // recenter" should feel. Same hook applies to V2 (WebGL-integrated
       // passthrough); the two modes are mutually exclusive at runtime.
-      const _arV1On = (typeof arMode   !== 'undefined' && arMode   && arMode.active   && arMode.baselineCaptured);
-      const _arV2On = (typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active && arModeV2.baselineCaptured);
-      if(_arV1On){
+      const _arOn = (typeof arMode !== 'undefined' && arMode && arMode.active && arMode.baselineCaptured);
+      if(_arOn){
         arMode.baselineYaw   += dx;
         arMode.baselinePitch += dy;
-      } else if(_arV2On){
-        arModeV2.baselineYaw   += dx;
-        arModeV2.baselinePitch += dy;
       } else {
         _yawTarget   -= dx;
         _pitchTarget  = Math.max(-1.55, Math.min(1.55, _pitchTarget - dy));
@@ -16164,7 +15856,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.1-alpha.1';
+const CURRENT_VERSION    = '0.0.1-alpha.2';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 

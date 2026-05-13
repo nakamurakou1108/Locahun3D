@@ -1,6 +1,6 @@
 {
-  "version": "0.0.1-alpha.1",
+  "version": "0.0.1-alpha.2",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Initial public release. Single-HTML 3DGS viewer."
+  "notes": "AR mode integrated (WebGL-passthrough is now the single AR path). Quality presets redefined to 低/中/高. iPad performance pass + low-poly toggle. Cleanup of dev tools."
 }
