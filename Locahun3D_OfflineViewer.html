@@ -9,8 +9,27 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@200;300;400;600;700;900&family=JetBrains+Mono:wght@300;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,'Inter','Segoe UI',sans-serif;}
-#c{display:block;width:100vw;height:100vh;}
+/* iOS Safari rubber-band / pull-to-refresh suppression.
+   - `position:fixed` on body locks the document to the viewport so a
+     swipe on the canvas can't bounce-scroll the page.
+   - `overscroll-behavior:none` kills rubber-band even when a scrollable
+     descendant (e.g. a long layer list) reaches its edge.
+   - `touch-action:none` on the canvas tells iOS to send all touches to
+     our JS handlers instead of treating them as scroll/zoom gestures
+     (the canvas handlers are registered passive:true, so they couldn't
+     preventDefault() even if they wanted to — this is the proper fix). */
+html,body{
+  width:100%;height:100%;overflow:hidden;background:#000;
+  font-family:system-ui,'Inter','Segoe UI',sans-serif;
+  overscroll-behavior:none;
+}
+body{position:fixed;top:0;left:0;}
+#c{display:block;width:100vw;height:100vh;touch-action:none;}
+/* Belt-and-suspenders: also disable touch defaults on the joystick and
+   the canvas-level overlay so a stray finger never starts a page-scroll
+   from those regions. Do NOT add this to #hud — it contains scrollable
+   panels (settings modal, env picker etc.) that need their native pan. */
+#overlay,#joy{touch-action:none;}
 #overlay{display:block;}
 /* Motion edge vignette: very subtle feathered mask at the absolute viewport
    rim only. Originally added to hide Spark sort-lag black gaps at new
@@ -839,16 +858,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
      own responsive layout). The stub div with id="cam-shot-panel" stays
      in the DOM purely for back-compat with code that null-guards it via
      getElementById, so we don't need to style it anymore. */
-  /* Hide the desktop-oriented sidebars on touch devices (iPad, phones).
-     The layer panel (シーンレイヤー), its bottom transform / object-info
-     section, the divider, and the file-add footer all assume a wide screen
-     + precision pointer; on coarse-pointer devices we collapse them out
-     of the way and force the cbar to centre against the full viewport. */
-  :root{ --lp-width: 0px !important; }
-  #layer-panel,
-  #lp-footer-bar,
-  #lp-divider,
-  #layer-transform { display:none !important; }
   /* Touch-device cbar: hide buttons that aren't useful on iPad/phones —
      測定 (precision pointer required), 🗺 マップ (the minimap is a desktop
      editing aid), and ❓ マニュアル (full keyboard-shortcut manual is
@@ -862,10 +871,18 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
    📐 測定 / 🗺 マップ / 🖥 画質 / ⚙ 設定 / ❓). Phone screens can't
    fit the buttons + joystick at usable sizes, and the typical phone flow
    is just "view & look around". iPad stays unaffected (its viewport is
-   ≥ 744 px on the short side, ≥ 768 px on the long side). */
+   ≥ 744 px on the short side, ≥ 768 px on the long side).
+   ALSO hide the layer panel / transform sidebar / footer on phones — they
+   assume a wide screen. iPad (viewport ≥ 744 px) shows the panel and
+   keeps full layer-editing functionality. */
 @media (pointer:coarse) and (any-hover:none) and (max-width: 600px),
        (pointer:coarse) and (any-hover:none) and (max-height: 500px){
   #hud .cbar{display:none !important;}
+  :root{ --lp-width: 0px !important; }
+  #layer-panel,
+  #lp-footer-bar,
+  #lp-divider,
+  #layer-transform { display:none !important; }
 }
 
 </style>
@@ -1124,6 +1141,22 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
   <!-- Standalone #btnAddFigureTop merged into the オブジェクト追加 dropdown
        above so all "add new layer" entries live in one menu. -->
   <button id="btnAvatarWalk" onclick="toggleAvatarWalk()" style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;white-space:nowrap;" onmouseover="this.style.background='rgba(120,200,255,.18)';this.style.borderColor='rgba(140,210,255,.45)'" onmouseout="this.style.background='rgba(20,20,22,.88)';this.style.borderColor='rgba(255,255,255,.18)'" title="アバター歩行モード（WASDでアバターを動かす）">🚶 <span id="lbl-walk">アバター歩行</span></button>
+  <!-- AR mode (touch devices only — uses rear camera as backdrop + device
+       orientation for camera control). Hidden on desktop via the same media
+       query that hides other touch-only widgets. -->
+  <button id="btnAR" onclick="toggleARMode()" style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;white-space:nowrap;display:none;" title="AR モード（背面カメラ越しに 3DGS を重ねて表示）">📱 <span id="lbl-ar">AR</span></button>
+</div>
+<!-- AR mode: camera-passthrough backdrop video and floating exit overlay.
+     Both are hidden until toggleARMode() activates them. -->
+<video id="ar-video" autoplay muted playsinline webkit-playsinline
+  style="display:none;position:fixed;inset:0;width:100%;height:100%;
+         object-fit:cover;z-index:-1;background:#000;pointer-events:none;"></video>
+<div id="ar-exit-overlay" style="display:none;position:fixed;top:60px;right:14px;z-index:200;pointer-events:auto;">
+  <button onclick="toggleARMode()"
+    style="background:rgba(255,60,60,.92);border:1px solid rgba(255,120,120,.6);
+           color:#fff;border-radius:20px;padding:8px 18px;font-size:.85em;
+           font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.45);
+           letter-spacing:.04em;">✕ <span id="lbl-ar-exit">AR 終了</span></button>
 </div>
 <div id="topbar">
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
@@ -2342,6 +2375,21 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
 #btnCamTool.on{background:rgba(255,180,84,.22);border-color:rgba(255,180,84,.55);
   color:#ffe4b3;}
 #btnAvatarWalk.on{background:rgba(120,200,255,.22)!important;border-color:rgba(140,210,255,.6)!important;color:#cbe8ff!important;}
+/* AR button — only shown on actual touch hardware (phones & tablets);
+   desktop hides it because passthrough AR needs a rear camera + gyro. */
+@media (pointer:coarse) and (any-hover:none){
+  #btnAR{display:inline-block !important;}
+}
+#btnAR.on{background:rgba(120,255,180,.22)!important;border-color:rgba(140,255,200,.6)!important;color:#cbffd8!important;}
+/* In AR mode the page background must show through so the rear-camera
+   video (z-index:-1) is visible. The viewer's normal black background lives
+   on <html>/<body>; the body.ar-active overrides drop it to transparent so
+   the WebGL canvas (drawn with clearAlpha:0) composites over the video. */
+body.ar-active{background:transparent !important;}
+body.ar-active #c{background:transparent !important;}
+body.ar-active #motion-vignette{display:none !important;}
+/* Letterbox bars + dropzone visuals would block the camera feed if visible. */
+body.ar-active #dz{display:none !important;}
 </style>
 
 <!-- Drop zone (REEL — ASPECT FRAMES) -->
@@ -7399,6 +7447,167 @@ function _avatarWalkExit(){
   if(btn){ btn.classList.remove('on'); btn.blur(); }
   _refreshResetBtnLabel();
   showUndoToast(T('walk-off'));
+  markDirty(10);
+}
+
+// ══════════════════════════════════════════════════
+//  AR MODE (camera passthrough + device orientation)
+// ══════════════════════════════════════════════════
+// Pragmatic AR for iPad / iPhone (and Android tablets / phones). WebXR
+// `immersive-ar` is Android-Chrome-only; iOS Safari has no WebXR. So we
+// implement a manual passthrough: rear camera → fullscreen <video> behind
+// a transparent renderer canvas, with DeviceOrientation driving yaw/pitch.
+// User can still walk via the on-screen joystick. Touch look on canvas is
+// suppressed while AR is active (gyro takes over rotation).
+const arMode = {
+  active: false,
+  video: null,
+  stream: null,
+  orientHandler: null,
+  baseYaw: 0,            // camera yaw at AR-entry — preserved so the scene
+                          // doesn't snap to compass-north when AR starts
+  baselineYaw: 0,        // gyro-derived yaw at AR-entry (delta reference)
+  baselineCaptured: false,
+};
+// Re-used scratch primitives so the 60 Hz orientation handler doesn't
+// thrash GC.
+const _arEulerScratch = new THREE.Euler();
+const _arQuatScratch  = new THREE.Quaternion();
+const _arQuatScreenAdjust = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const _arQuatOrient   = new THREE.Quaternion();
+const _arForwardScratch = new THREE.Vector3();
+const _arZAxis = new THREE.Vector3(0, 0, 1);
+
+window.toggleARMode = function(){
+  if(arMode.active){ _arExit(); return; }
+  _arEnter().catch(e=>{
+    console.error('[AR] enter failed', e);
+    if(typeof showUndoToast==='function') showUndoToast(T('ar-permission-denied'));
+    _arExit();
+  });
+};
+
+async function _arEnter(){
+  // Basic capability check
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showUndoToast(T('ar-unsupported'));
+    return;
+  }
+  // iOS 13+ requires explicit user-gesture-triggered permission for
+  // DeviceOrientationEvent. Android / desktop browsers fire without it.
+  if(typeof DeviceOrientationEvent !== 'undefined' &&
+     typeof DeviceOrientationEvent.requestPermission === 'function'){
+    try {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if(r !== 'granted'){
+        showUndoToast(T('ar-permission-denied'));
+        return;
+      }
+    } catch(e){ /* non-iOS path: keep going */ }
+  }
+  // Request rear-facing camera. `ideal:'environment'` lets browsers without
+  // a back camera (e.g. desktops with only a webcam) still grant the front
+  // cam rather than failing outright.
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false,
+    });
+  } catch(e){
+    console.warn('[AR] getUserMedia failed:', e);
+    showUndoToast(T('ar-permission-denied'));
+    return;
+  }
+  // Mount the camera stream in the backdrop <video> element
+  const video = document.getElementById('ar-video');
+  if(!video){
+    showUndoToast(T('ar-unsupported'));
+    stream.getTracks().forEach(t=>t.stop());
+    return;
+  }
+  video.srcObject = stream;
+  video.style.display = 'block';
+  try { await video.play(); } catch(e){ /* autoplay should kick in via muted */ }
+  arMode.video = video;
+  arMode.stream = stream;
+  // Make the WebGL canvas transparent so the video composites underneath.
+  // Saved color is restored on exit. We don't touch scene.background — it's
+  // null by default in this viewer, and the renderer clear color provides
+  // the visible black.
+  if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(0);
+  document.body.classList.add('ar-active');
+  // Capture yaw at entry so the gyro deltas apply relative to current view
+  // (otherwise the scene snaps to wherever the phone happens to point first).
+  arMode.baseYaw = yaw;
+  arMode.baselineCaptured = false;
+  // Device orientation → yaw/pitch via the standard THREE.DeviceOrientation
+  // formula. We feed _yawTarget / _pitchTarget so the existing camera-update
+  // path applies them with the same smoothing as mouse/joystick input.
+  arMode.orientHandler = function(ev){
+    if(ev.alpha == null || ev.beta == null) return;
+    const orient = (screen.orientation && screen.orientation.angle != null)
+                  ? screen.orientation.angle
+                  : (window.orientation || 0);
+    const orientRad = orient * Math.PI / 180;
+    const alpha = ev.alpha * Math.PI / 180;
+    const beta  = ev.beta  * Math.PI / 180;
+    const gamma = ev.gamma!=null ? ev.gamma * Math.PI / 180 : 0;
+    _arEulerScratch.set(beta, alpha, -gamma, 'YXZ');
+    _arQuatScratch.setFromEuler(_arEulerScratch);
+    _arQuatScratch.multiply(_arQuatScreenAdjust);
+    _arQuatOrient.setFromAxisAngle(_arZAxis, -orientRad);
+    _arQuatScratch.multiply(_arQuatOrient);
+    // Convert quaternion to a look-forward vector, then extract yaw / pitch.
+    _arForwardScratch.set(0,0,-1).applyQuaternion(_arQuatScratch);
+    const yawNew   = Math.atan2(-_arForwardScratch.x, -_arForwardScratch.z);
+    const pitchNew = Math.asin(Math.max(-1, Math.min(1, _arForwardScratch.y)));
+    if(!arMode.baselineCaptured){
+      arMode.baselineYaw = yawNew;
+      arMode.baselineCaptured = true;
+      return;
+    }
+    _yawTarget   = arMode.baseYaw + (yawNew - arMode.baselineYaw);
+    _pitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew));
+    markDirty(3);
+  };
+  window.addEventListener('deviceorientation', arMode.orientHandler, true);
+  // UI state
+  const btn = document.getElementById('btnAR');
+  if(btn){ btn.classList.add('on'); btn.blur(); }
+  const exitOv = document.getElementById('ar-exit-overlay');
+  if(exitOv) exitOv.style.display = 'block';
+  arMode.active = true;
+  showUndoToast(T('ar-on'));
+  markDirty(10);
+}
+
+function _arExit(){
+  arMode.active = false;
+  // Stop camera tracks promptly so the indicator light goes out and
+  // permission state doesn't linger.
+  if(arMode.stream){
+    try { arMode.stream.getTracks().forEach(t=>t.stop()); } catch(e){}
+    arMode.stream = null;
+  }
+  if(arMode.video){
+    try { arMode.video.pause(); } catch(e){}
+    arMode.video.srcObject = null;
+    arMode.video.style.display = 'none';
+    arMode.video = null;
+  }
+  if(arMode.orientHandler){
+    window.removeEventListener('deviceorientation', arMode.orientHandler, true);
+    arMode.orientHandler = null;
+  }
+  arMode.baselineCaptured = false;
+  if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(1);
+  document.body.classList.remove('ar-active');
+  const btn = document.getElementById('btnAR');
+  if(btn){ btn.classList.remove('on'); btn.blur(); }
+  const exitOv = document.getElementById('ar-exit-overlay');
+  if(exitOv) exitOv.style.display = 'none';
+  showUndoToast(T('ar-off'));
   markDirty(10);
 }
 
@@ -13480,6 +13689,13 @@ Object.assign(I18N.ja,{
   'walk-on':'🚶 アバター歩行モード ON — WASD で移動',
   'walk-off':'アバター歩行モードを終了',
   'walk-repos':'🚶 アバターを再配置しました',
+  'lbl-ar':'AR',
+  'lbl-ar-exit':'AR 終了',
+  'tt-ar':'AR モード（背面カメラ越しに 3DGS を重ねて表示）',
+  'ar-on':'📱 AR モード ON — 端末を傾けて視点を変えられます',
+  'ar-off':'AR モードを終了しました',
+  'ar-unsupported':'⚠ この端末では AR モードが利用できません',
+  'ar-permission-denied':'⚠ カメラ / モーションセンサの許可が必要です',
   'giz-pt-a':'点 A',
   'giz-pt-b':'点 B',
   'giz-pt-c':'点 C',
@@ -13714,6 +13930,13 @@ Object.assign(I18N.en,{
   'walk-on':'🚶 Avatar walk ON — move with WASD',
   'walk-off':'Avatar walk mode ended',
   'walk-repos':'🚶 Avatar repositioned',
+  'lbl-ar':'AR',
+  'lbl-ar-exit':'Exit AR',
+  'tt-ar':'AR mode (rear camera passthrough with the 3DGS overlaid)',
+  'ar-on':'📱 AR mode ON — tilt your device to change the view',
+  'ar-off':'AR mode ended',
+  'ar-unsupported':'⚠ This device does not support AR mode',
+  'ar-permission-denied':'⚠ Camera / motion sensor permission required',
   'giz-pt-a':'Point A',
   'giz-pt-b':'Point B',
   'giz-pt-c':'Point C',
