@@ -2475,7 +2475,7 @@ body.ar-active-v2 #dz{display:none !important;}
            style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
   </div>
   <label class="dz-portalcam" id="dz-portalcam-label" title="Portalcam で取得した 3DGS は 90° X 軸回転で書き出されるため、自動で補正します">
-    <input type="checkbox" id="dz-portalcam-cb" checked onchange="syncPortalcamCheckboxToLayers()">
+    <input type="checkbox" id="dz-portalcam-cb" onchange="syncPortalcamCheckboxToLayers()">
     <span id="dz-portalcam-text">Portalcam の 3DGS データですか？</span>
     <span class="dz-pc-hint">X 90°</span>
   </label>
@@ -6463,6 +6463,58 @@ document.addEventListener('DOMContentLoaded', () => {
   if(cb) cb.checked = (_splatStride() >= 2);
 }, { once:true });
 
+// Touch-device perf hint shown once per session after the first scene
+// loads. Floating card at bottom-left, above the joystick. Tapping the
+// "ON" button flips the toggle and reloads layers; the ✕ button just
+// dismisses. Auto-fades after 12 s so it doesn't linger.
+window.showLowPolyHint = function(){
+  // Skip if already on (no point suggesting what's already enabled).
+  if(_splatStride() >= 2) return;
+  const old = document.getElementById('lowpoly-hint');
+  if(old) old.remove();
+  const card = document.createElement('div');
+  card.id = 'lowpoly-hint';
+  card.style.cssText =
+    'position:fixed;left:18px;bottom:230px;z-index:140;' +
+    'background:rgba(20,20,22,.96);border:1px solid rgba(255,180,84,.55);' +
+    'border-radius:10px;padding:11px 13px;max-width:260px;' +
+    'box-shadow:0 6px 18px rgba(0,0,0,.55);' +
+    'color:#ffe4b3;font-size:.8em;line-height:1.45;letter-spacing:.02em;' +
+    'font-family:inherit;pointer-events:auto;' +
+    'transition:opacity .35s ease;';
+  const lang = (window._lang === 'en') ? 'en' : 'ja';
+  const txt = (lang === 'en')
+    ? 'If performance is heavy, turn ON "Halve splats" in the quality panel.'
+    : '動作が重い場合は「ポリゴン半減」を ON';
+  const btnTxt    = (lang === 'en') ? 'Turn ON' : 'ON にする';
+  const dismissTxt = (lang === 'en') ? 'Dismiss' : '閉じる';
+  card.innerHTML =
+    '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:8px;">' +
+      '<div style="flex:1">⚡ ' + txt + '</div>' +
+      '<button id="lph-x" aria-label="' + dismissTxt + '" ' +
+        'style="background:transparent;border:none;color:rgba(255,228,179,.6);' +
+        'font-size:1.1em;line-height:1;cursor:pointer;padding:0 2px;">✕</button>' +
+    '</div>' +
+    '<button id="lph-on" style="' +
+      'background:rgba(255,180,84,.18);border:1px solid rgba(255,180,84,.55);' +
+      'color:#ffe4b3;border-radius:6px;padding:5px 14px;font-size:.92em;' +
+      'cursor:pointer;font-weight:600;letter-spacing:.04em;">🎚 ' + btnTxt + '</button>';
+  document.body.appendChild(card);
+  const dismiss = ()=>{
+    card.style.opacity = '0';
+    setTimeout(()=>{ if(card.parentNode) card.remove(); }, 400);
+  };
+  const onBtn = card.querySelector('#lph-on');
+  const xBtn  = card.querySelector('#lph-x');
+  if(onBtn) onBtn.addEventListener('click', ()=>{
+    try { window.setLowPolyMode(true); } catch(_){}
+    dismiss();
+  });
+  if(xBtn) xBtn.addEventListener('click', dismiss);
+  // Auto-dismiss after 12 s so it doesn't sit forever.
+  setTimeout(dismiss, 12000);
+};
+
 // ══════════════════════════════════════════════════
 //  ORIENTATION
 // ══════════════════════════════════════════════════
@@ -6795,6 +6847,19 @@ async function loadSplatFile(file){
     if(typeof window._scheduleQualityProbe === 'function'){
       window._scheduleQualityProbe();
     }
+    // Touch-device hint: surface the "ポリゴン半減" performance lever once
+    // the user has actually opened a scene. The toggle lives inside the
+    // quality panel which isn't visible until the user opens it, so users
+    // on heavy iPad / iPhone scenes wouldn't otherwise discover it.
+    // Persists per-session via sessionStorage so we don't nag the user
+    // every time they load a different file.
+    try {
+      const isTouch = window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
+      if(isTouch && !sessionStorage.getItem('locahun_lowpoly_hint_shown')){
+        sessionStorage.setItem('locahun_lowpoly_hint_shown', '1');
+        if(typeof showLowPolyHint === 'function') showLowPolyHint();
+      }
+    } catch(_){}
   }catch(err){
     console.error(err);
     setErr(T('error-prefix')+err.message);
@@ -7998,6 +8063,15 @@ async function _arEnter(){
   // null by default in this viewer, and the renderer clear color provides
   // the visible black.
   if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(0);
+  // Hide the environment dome while AR is active. The dome is a fullscreen
+  // sphere wrapping the camera with whichever sky preset the user picked
+  // (朝・昼・夕方・夜 / etc.). With the canvas transparent for AR, the
+  // dome's solid sky color would otherwise OBSCURE the camera passthrough
+  // — the user reported this as "AR にしたとき環境がカメラ画面になってしまう".
+  if(env && env.mesh){
+    arMode._envWasVisible = !!env.mesh.visible;
+    env.mesh.visible = false;
+  }
   document.body.classList.add('ar-active');
   // iOS Safari compositor cost scales steeply with pixel count when a live
   // <video> and a transparent WebGL canvas are stacked (the rAF clamp that
@@ -8112,6 +8186,12 @@ function _arExit(){
   }
   arMode.baselineCaptured = false;
   if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(1);
+  // Restore the environment dome's visibility (was hidden on entry so the
+  // sky preset wouldn't obscure the camera passthrough).
+  if(env && env.mesh && typeof arMode._envWasVisible === 'boolean'){
+    env.mesh.visible = arMode._envWasVisible;
+  }
+  arMode._envWasVisible = null;
   // Restore the pre-AR pixel ratio. If for some reason the saved value
   // is bogus, fall back to the standard tier-aware calculation.
   try {
@@ -8347,6 +8427,13 @@ async function _arEnterV2(){
     renderer.setPixelRatio(v2PR);
   } catch(_){}
 
+  // Hide env dome while AR is active — same reason as V1: a fullscreen
+  // sky preset sphere would obscure the camera passthrough.
+  if(env && env.mesh){
+    arModeV2._envWasVisible = !!env.mesh.visible;
+    env.mesh.visible = false;
+  }
+
   document.body.classList.add('ar-active-v2');
 
   // ── Device-orientation handler (yaw + pitch) — same math as V1 ──
@@ -8453,6 +8540,11 @@ function _arExitV2(){
   } catch(_){}
   arModeV2._savedPixelRatio = null;
   arModeV2.baselineCaptured = false;
+  // Restore env dome visibility (was hidden on AR-v2 entry).
+  if(env && env.mesh && typeof arModeV2._envWasVisible === 'boolean'){
+    env.mesh.visible = arModeV2._envWasVisible;
+  }
+  arModeV2._envWasVisible = null;
   document.body.classList.remove('ar-active-v2');
   const btn = document.getElementById('btnAR');
   if(btn){
@@ -12673,14 +12765,15 @@ function animate(now) {
   //   respected as a cap; below it the watchdog still defends 30 fps.
   if(!window._gpuWatchdog) window._gpuWatchdog = { slowStreak:0, fastStreak:0, lastStep:0 };
   const _wd = window._gpuWatchdog;
-  // STEPS_ALL keeps the emergency 0.35 / 0.5 steps so the watchdog can
-  // defend the 30 fps floor even below the lowest user-pickable preset.
-  // The UI only exposes 0.75 / 1.0 / 1.5 as discrete buttons — anything
-  // below 0.75 (watchdog-only territory) still labels as "低".
-  const STEPS_ALL = [0.35, 0.5, 0.75, 1.0, 1.5];
+  // STEPS_ALL matches the three user-pickable presets exactly — per user
+  // request the watchdog NEVER downgrades quality below 低 (0.75). At
+  // 0.75 on a touch device, the recommended next step is the "ポリゴン半減"
+  // toggle (lowers splat count instead of pixel ratio); a hint toast
+  // suggests it after file load.
+  const STEPS_ALL = [0.75, 1.0, 1.5];
   const PRESET_FOR_SCALE = s => {
     // Map a qualScale value back to a 0..2 preset index for the badge.
-    //   1.5 → 高 (2), 1.0 → 中 (1), 0.75 and below → 低 (0)
+    //   1.5 → 高 (2), 1.0 → 中 (1), 0.75 → 低 (0)
     if(s >= 1.4)  return 2;
     if(s >= 0.95) return 1;
     return 0;
