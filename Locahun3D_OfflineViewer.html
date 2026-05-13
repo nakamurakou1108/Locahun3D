@@ -6559,86 +6559,186 @@ const _wmRay = new THREE.Raycaster();
 const _wmDown = new THREE.Vector3(0,-1,0);
 const _wmTmpV = new THREE.Vector3();
 
-// ── JS-authored walk-cycle AnimationClip ────────────────────────────────
-// Builds a THREE.AnimationClip with 4 keyframes per stride. Each track is
-// a QuaternionKeyframeTrack on a Mixamo bone (looked up via the
-// walkMode.bones map by logical name). Values are computed as
-// rest_q × delta_q so the clip drives bones to FINAL world-space rotations
-// that compose correctly with the figure's bind pose.
+// ── JS-authored walk-cycle AnimationClip (world-axis edition) ───────────
+// Previous Euler-based version assumed Mixamo bone local axes align with
+// world axes — they don't, so X rotation didn't produce front-back swing.
+// This version specifies each keyframe pose as rotations around WORLD
+// axes (X = side-to-side, Y = vertical, Z = forward-back), then projects
+// each rotation into the bone's parent-local frame so the resulting
+// quaternion track produces the intended motion regardless of how Mixamo
+// twisted the bone's bind orientation.
 //
-// Pose curves are the same as the procedural sine-wave fallback (which was
-// visually-tuned on the Mixamo mannequin) — just baked into 4 discrete
-// keyframes per second-long loop. Three.js linearly interpolates between
-// keyframes which produces a smooth gait curve at runtime.
+// Math, for each bone at each keyframe:
+//   We want the bone's WORLD rotation to be: parent_world × rest × ??
+//   such that, relative to bind pose, the bone has rotated by some
+//   world-frame R = quat(world_axis, angle).
 //
-// Stride phases (1-sec cycle):
-//   t=0.00  passing pose (legs neutral, arms swung half-way)
-//   t=0.25  PEAK left-leg forward / right-leg back
-//   t=0.50  passing pose (mirror of t=0.00)
-//   t=0.75  PEAK right-leg forward / left-leg back
+//   bone_world_q (bind) = parent_world × rest
+//   bone_world_q (target) = R × bone_world_q (bind) = R × parent_world × rest
+//   bone_local_q (target) = parent_world⁻¹ × R × parent_world × rest
+//                         = (parent_world⁻¹ × R × parent_world) × rest
+//                         = R_in_parent_frame × rest
+//   where R_in_parent_frame = quat(parent_world⁻¹ · world_axis, angle)
+//
+// So we pre-multiply rest by R_in_parent_frame. This is what the
+// implementation does.
+//
+// Stride phases (1-sec cycle, lerp interpolates the rest):
+//   t=0.00  L-leg max FORWARD, R-leg max BACK   (R-arm forward, L-arm back)
+//   t=0.50  R-leg max FORWARD, L-leg max BACK   (L-arm forward, R-arm back)
 //   t=1.00  loop back to t=0.00
 function _makeWalkClip(bones, opts){
   opts = opts || {};
-  const name      = opts.name      || 'walkAuthored';
-  const cycleSec  = opts.cycleSec  || 1.0;
-  const amp       = opts.amp       || 1.0;   // overall amplitude scale
+  const name     = opts.name     || 'walkAuthored';
+  const cycleSec = opts.cycleSec || 1.0;
+  const amp      = opts.amp      || 1.0;
   const tD = Math.PI / 180;
-  // Per-bone keyframe poses, expressed as ADDITIVE Euler offsets (deg)
-  // from the bone's rest quaternion. 5 entries = 4 phases + loop-closing
-  // repeat of phase 0 so Three.js's linear interpolation wraps cleanly.
-  // Convention: positive X rotation = forward-swing of the limb.
+
+  // Per-bone keyframe rotations expressed as a LIST of [world_axis, deg]
+  // pairs. Multiple entries on the same keyframe compose left-to-right
+  // (first listed = applied LAST in world, so think "post-rotations" in
+  // the order of intuitive layering).
   //
-  // Note on arms: in T-pose, Mixamo arms are horizontal. The base "75°
-  // forward+down" offset that brought them to the sides in the procedural
-  // path is NOT applied here — the rest_q × delta composition would
-  // double up. Arms thus stay near T-pose but swing on the X axis. If
-  // they look too horizontal in Chrome screenshots we'll re-add an
-  // explicit shoulder droop by rotating about Z.
-  // 3-keyframe cycle. Three.js interpolates linearly between adjacent keys.
-  //   t=0.00  left leg forward / right leg back  (max stride A)
-  //   t=0.50  right leg forward / left leg back  (max stride B)
-  //   t=1.00  loop back to A
-  // Passing pose (legs near neutral) emerges automatically at t=0.25/0.75.
-  // Arms carry a CONSTANT 75° X delta to bring them DOWN from the Mixamo
-  // T-pose to a natural by-the-side position, plus a ±25° X swing on top
-  // that counter-syncs with the opposite leg.
+  // World frame convention (Mixamo + Three default):
+  //   +X right (red),  +Y up (green),  +Z back (blue) — so −Z is the
+  //   direction the avatar faces in T-pose. Walking forward = rotating
+  //   the foot bone tip from world (0,0,0) toward −Z.
+  //
+  // A leg "swung forward" means: hip rotates the leg about world +X axis
+  // by a positive angle (right-hand rule: +X thumb, fingers curl
+  // +Y→+Z → forward swing pushes the foot's −Z component negative). ✓
+  //
+  // Arms hanging down: the bone tip needs to point from "world ±X (T-pose
+  // side)" toward "world −Y (down)". For LeftArm (T-pose toward +X), that
+  // is a rotation about world +Z (forward axis) by +90°. For RightArm
+  // (toward −X), it is about world +Z by −90° (i.e. world −Z by +90°).
+  // Then the swing is around world +X just like legs.
+  //
+  // We DELIBERATELY don't try to fold the drop into the same rotation
+  // (that's where the previous Euler hack broke) — each keyframe gets
+  // BOTH the drop and the swing as separate world-axis rotations.
+
+  const SWING_LEG = 28;   // ± deg, upper leg swing about world X
+  const KNEE     = 38;   // deg, knee bend on back-swing (rear leg)
+  const SWING_ARM = 22;  // ± deg, upper arm swing about world X
+  const ARM_DROP = 90;   // deg, base drop from T-pose
+
+  // Each pose entry = array of { wx, wy, wz, deg } operations applied to
+  // the bone's bind pose, compounded in world space.
   const poses = {
-    upperLegL:  [[ 30,0,0], [-25,0,0], [ 30,0,0]],
-    upperLegR:  [[-25,0,0], [ 30,0,0], [-25,0,0]],
-    lowerLegL:  [[  0,0,0], [ 35,0,0], [  0,0,0]],
-    lowerLegR:  [[ 35,0,0], [  0,0,0], [ 35,0,0]],
-    upperArmL:  [[ 55,0,-12], [100,0,-12], [ 55,0,-12]],  // 75° droop + (-20 → +25) swing
-    upperArmR:  [[100,0, 12], [ 55,0, 12], [100,0, 12]],
-    lowerArmL:  [[20,0,0], [20,0,0], [20,0,0]],
-    lowerArmR:  [[20,0,0], [20,0,0], [20,0,0]],
-    head:       [[ 5,0,0], [ 5,0,0], [ 5,0,0]],
-    footL:      [[-8,0,0], [-8,0,0], [-8,0,0]],
-    footR:      [[-8,0,0], [-8,0,0], [-8,0,0]],
+    // ── LEGS ── world +X swing
+    upperLegL: [
+      [[1,0,0, +SWING_LEG]],  // t=0  forward
+      [[1,0,0, -SWING_LEG]],  // t=0.5 back
+      [[1,0,0, +SWING_LEG]],  // t=1  loop
+    ],
+    upperLegR: [
+      [[1,0,0, -SWING_LEG]],
+      [[1,0,0, +SWING_LEG]],
+      [[1,0,0, -SWING_LEG]],
+    ],
+    // ── KNEES ── bend only on back-swing
+    lowerLegL: [
+      [[1,0,0,    0]],  // t=0  L-leg forward, knee straight
+      [[1,0,0,  +KNEE]],// t=0.5 L-leg back, knee bent
+      [[1,0,0,    0]],
+    ],
+    lowerLegR: [
+      [[1,0,0,  +KNEE]],
+      [[1,0,0,    0]],
+      [[1,0,0,  +KNEE]],
+    ],
+    // ── ARMS ── drop down (world Z rotation), then swing about world X
+    // LeftArm bone in bind points world +X → rotate about world +Z by +90°
+    // to drop it to world −Y. RightArm bone points world −X → rotate about
+    // world +Z by −90°. Order: drop FIRST in world (applied last
+    // mathematically), then swing applied even LATER means swing list is
+    // BEFORE drop in the array (our convention: index 0 = applied last).
+    // Mixamo avatar at bind: faces world -Z, character's LEFT side toward
+    // world +X, RIGHT side toward world -X. To DROP an arm whose tip is at
+    // world +X (LeftArm) down to world -Y, rotate around world +Z by -90°
+    // (right-hand rule: thumb +Z, fingers go +X → +Y, so -90° goes +X → -Y).
+    // RightArm tip at world -X drops via +90° around +Z (-X → -Y).
+    upperArmL: [
+      // arm hangs at side, swung BACK at t=0 (counter-syncs with right leg fwd)
+      [[1,0,0, -SWING_ARM],  [0,0,1, -ARM_DROP]],   // swing-back ⊕ drop
+      [[1,0,0, +SWING_ARM],  [0,0,1, -ARM_DROP]],
+      [[1,0,0, -SWING_ARM],  [0,0,1, -ARM_DROP]],
+    ],
+    upperArmR: [
+      [[1,0,0, +SWING_ARM],  [0,0,1, +ARM_DROP]],
+      [[1,0,0, -SWING_ARM],  [0,0,1, +ARM_DROP]],
+      [[1,0,0, +SWING_ARM],  [0,0,1, +ARM_DROP]],
+    ],
+    // Slight elbow bend (about world X, in the bone's bind orientation
+    // the elbow naturally bends about the X axis once the arm is dropped)
+    lowerArmL: [
+      [[1,0,0,  20]],
+      [[1,0,0,  20]],
+      [[1,0,0,  20]],
+    ],
+    lowerArmR: [
+      [[1,0,0,  20]],
+      [[1,0,0,  20]],
+      [[1,0,0,  20]],
+    ],
+    // Subtle head forward tilt
+    head: [
+      [[1,0,0,  4]],
+      [[1,0,0,  4]],
+      [[1,0,0,  4]],
+    ],
   };
+
   const times = new Float32Array([0, 0.5, 1.0]).map(t => t * cycleSec);
   const tracks = [];
-  const tmpEu = new THREE.Euler();
-  const tmpQ  = new THREE.Quaternion();
-  const restQ = new THREE.Quaternion();
-  for(const [logical, eulers] of Object.entries(poses)){
+
+  // Reusable temporaries
+  const axisV    = new THREE.Vector3();
+  const parentWQ = new THREE.Quaternion();
+  const parentWQI = new THREE.Quaternion();
+  const opQ     = new THREE.Quaternion();
+  const accumQ  = new THREE.Quaternion();
+  const finalQ  = new THREE.Quaternion();
+
+  for(const [logical, phases] of Object.entries(poses)){
     const bone = bones[logical];
     if(!bone || !bone.userData._restQ) continue;
-    restQ.copy(bone.userData._restQ);
-    const values = new Float32Array(eulers.length * 4);
-    for(let i = 0; i < eulers.length; i++){
-      const [dx, dy, dz] = eulers[i];
-      tmpEu.set(dx * tD * amp, dy * tD * amp, dz * tD * amp, 'XYZ');
-      tmpQ.setFromEuler(tmpEu);
-      // final_q = rest × delta
-      const fx = restQ.x, fy = restQ.y, fz = restQ.z, fw = restQ.w;
-      const qx = tmpQ.x, qy = tmpQ.y, qz = tmpQ.z, qw = tmpQ.w;
-      values[i*4+0] = fw*qx + fx*qw + fy*qz - fz*qy;
-      values[i*4+1] = fw*qy - fx*qz + fy*qw + fz*qx;
-      values[i*4+2] = fw*qz + fx*qy - fy*qx + fz*qw;
-      values[i*4+3] = fw*qw - fx*qx - fy*qy - fz*qz;
+    if(!bone.parent) continue;
+
+    // Capture parent's CURRENT world quaternion (which is bind pose for the
+    // entire chain since we run this at avatar build time — before the
+    // mixer has touched anything).
+    bone.parent.updateMatrixWorld(true);
+    bone.parent.getWorldQuaternion(parentWQ);
+    parentWQI.copy(parentWQ).invert();
+
+    const values = new Float32Array(phases.length * 4);
+
+    for(let i = 0; i < phases.length; i++){
+      const ops = phases[i];
+      // Build R_in_parent_frame = compose all ops as world rotations, then
+      // express in parent local frame. ops[0] is applied LAST in world =>
+      // listed first in the array (gets multiplied on the LEFT of accumQ).
+      accumQ.identity();
+      for(let k = ops.length - 1; k >= 0; k--){
+        const [wx, wy, wz, deg] = ops[k];
+        axisV.set(wx, wy, wz);
+        // axis in parent's local frame
+        axisV.applyQuaternion(parentWQI);
+        opQ.setFromAxisAngle(axisV.normalize(), deg * tD * amp);
+        // accumQ = opQ × accumQ  (opQ applied last among those already accumulated)
+        accumQ.premultiply(opQ);
+      }
+      // final_q = accumQ × rest  (rest applied first, then accumQ)
+      finalQ.copy(accumQ).multiply(bone.userData._restQ);
+
+      values[i*4+0] = finalQ.x;
+      values[i*4+1] = finalQ.y;
+      values[i*4+2] = finalQ.z;
+      values[i*4+3] = finalQ.w;
     }
-    // Use the BONE'S ACTUAL .name (handles colon-vs-underscore sanitisation
-    // that GLTFLoader sometimes applies to Mixamo bones).
+
     tracks.push(new THREE.QuaternionKeyframeTrack(
       bone.name + '.quaternion', Array.from(times), values));
   }
@@ -6769,6 +6869,12 @@ function _avatarResetBones(){
 //   • An oscillating SWING component animates legs + arm counter-swing.
 // Run mode increases both frequency and amplitude.
 function _avatarUpdateAnimation(dt, walking, runMul){
+  // Diagnostic counter — increments every call so we can verify the mixer
+  // update path is actually being hit each frame.
+  window.__avatarAnimCallCount = (window.__avatarAnimCallCount || 0) + 1;
+  window.__avatarAnimLastWalking = walking;
+  window.__avatarAnimLastRunMul = runMul;
+  window.__avatarAnimLastDt = dt;
   // ── Mixer-driven path (GLB has baked WalkLoop clip) ─────────────────────
   // Crossfade weight 0↔1 by walking state and scale playback rate by run.
   // Mixer is the single source of truth for bone rotations when this path
@@ -11573,26 +11679,17 @@ if(/[?&]testwalk=1/.test(location.search)){
           if(typeof markDirty === 'function') markDirty(60);
         }
       } catch(_){}
-      // Simulate forward walk (KeyW). The avatar runs forward, camera
-      // follows behind. Front-back gait detail is clearest from this view
-      // since left/right leg-swap reads as alternating "forward foot" on
-      // alternating sides of the silhouette.
+      // Re-dispatch KeyW periodically. The Chrome CDP-driven window has a
+      // tendency to fire window.blur (which the keyup handler treats as a
+      // global keys-clear), AND the testwalk's setInterval probe runs at
+      // 1Hz which can race with focus events. Spamming the keydown at 5Hz
+      // keeps `keys.KeyW` true throughout the test window.
       try{
-        const ev = new KeyboardEvent('keydown', {code:'KeyW', key:'w', bubbles:true});
-        window.dispatchEvent(ev);
-      }catch(_){}
-      // Also rotate the camera 45° around the avatar so we see a 3/4
-      // front+side view (best for confirming the cycle is left/right
-      // asymmetric, not just mirrored each half-cycle).
-      try{
-        if(typeof _yawTarget !== 'undefined'){
-          // Note: yaw=0 already faces the avatar from behind; +45° rotates
-          // the camera around toward the right side.
-          window.__yawNudge = Math.PI * 0.25;
-          setTimeout(()=>{
-            try{ window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyW',key:'w',bubbles:true})); }catch(_){}
-          }, 200);
-        }
+        const fireW = () => {
+          try{ window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyW',key:'w',bubbles:true})); }catch(_){}
+        };
+        fireW();
+        setInterval(fireW, 200);
       }catch(_){}
       // Log mixer state every 1s
       let tick = 0;
@@ -11612,6 +11709,25 @@ if(/[?&]testwalk=1/.test(location.search)){
           actionTimeScale: a ? a.getEffectiveTimeScale() : null,
           actionTime: a ? a.time : null,
           numBones: wm && wm.bones ? Object.keys(wm.bones).length : 0,
+          airborne: wm && wm.airborne,
+          velY: wm && wm.velocity ? +wm.velocity.y.toFixed(2) : null,
+          avPosY: wm && wm.avatar ? +wm.avatar.position.y.toFixed(2) : null,
+          groundY: wm ? +Number(wm.groundY).toFixed(2) : null,
+          keyW: typeof keys !== 'undefined' && keys.KeyW,
+          clipName: a && a._clip ? a._clip.name : null,
+          clipDur: a && a._clip ? a._clip.duration : null,
+          numTracks: a && a._clip ? a._clip.tracks.length : null,
+          firstTrackName: a && a._clip && a._clip.tracks[0] ? a._clip.tracks[0].name : null,
+          numBindings: a && a._propertyBindings ? a._propertyBindings.length : null,
+          numBoundOK: a && a._propertyBindings
+            ? a._propertyBindings.filter(b => b && b.binding && b.binding.targetObject).length
+            : null,
+          enabled: a ? a.enabled : null,
+          isRunning: a && typeof a.isRunning === 'function' ? a.isRunning() : null,
+          animCalls: window.__avatarAnimCallCount || 0,
+          lastWalking: window.__avatarAnimLastWalking,
+          lastRunMul:  window.__avatarAnimLastRunMul,
+          lastDt:      window.__avatarAnimLastDt,
         };
         // Sample one bone's current quaternion so we can see whether the
         // mixer is actually moving anything (vs frozen at rest)
