@@ -34,3 +34,9 @@ __pycache__/
 # ── Dropbox conflict files ───────────────────────────────────────────────
 *conflicted*
 *Conflict*
+
+# ── Local backups / variants (not part of the published site) ────────────
+/Test/
+/ac/
+/Locahun3D_OfflineViewer_LCC2.html
+/Locahun3D_OfflineViewer_*.html
