@@ -505,8 +505,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
 #layer-panel.collapsed{bottom:auto;height:auto;}
 #layer-panel.collapsed #layer-list,
 #layer-panel.collapsed #lp-divider,
-#layer-panel.collapsed #layer-transform,
-#layer-panel.collapsed #lp-list-head{display:none !important;}
+#layer-panel.collapsed #layer-transform{display:none !important;}
 .lp-head select{
   background:#2A2A2C;border:1px solid rgba(255,255,255,.12);color:#888888;
   border-radius:4px;padding:1px 4px;font-size:.85em;cursor:pointer;
@@ -897,22 +896,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
     <button onclick="triggerImportAny()" id="fp-btn-import">📁 <span id="fp-btn-import-lbl">読み込み</span></button>
     <button onclick="openExportModal()" id="fp-btn-export" style="color:#ffd49a">📤 <span id="fp-btn-export-lbl">書き出し</span></button>
   </div>
-  <!-- Sub-header for the layer-list section. Default collapsed per user
-       request — the panel header expands the whole sidebar, then this
-       second level lets the user reveal the actual layer rows. Clicking
-       the chevron strip toggles #layer-list visibility. -->
-  <div id="lp-list-head" onclick="toggleLayerListCollapse(event)"
-    style="display:flex;align-items:center;gap:6px;cursor:pointer;
-           padding:6px 10px;background:rgba(24,24,26,.94);
-           border-top:1px solid rgba(255,255,255,.05);
-           border-bottom:1px solid rgba(255,255,255,.05);
-           font-size:.72em;color:rgba(190,190,190,.75);
-           letter-spacing:.04em;user-select:none;flex-shrink:0">
-    <span id="lp-list-chev" style="display:inline-block;color:#888;
-      transition:transform .18s;transform:rotate(-90deg)">▾</span>
-    <span>📑 レイヤー一覧</span>
-  </div>
-  <div id="layer-list" style="display:none"><div id="lp-empty" style="font-size:.72em;color:#404040;padding:10px;text-align:center">まだシーンがありません</div></div>
+  <!-- Layer list — always visible when the panel itself is expanded.
+       (The earlier "sub-header chevron" second-level collapse was removed
+       per user request; the panel-header chevron still expands/collapses
+       the whole sidebar.) -->
+  <div id="layer-list"><div id="lp-empty" style="font-size:.72em;color:#404040;padding:10px;text-align:center">まだシーンがありません</div></div>
   <div id="lp-divider" style="height:7px;cursor:ns-resize;background:rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.1);border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;transition:background .15s;display:none;"
     onmouseover="this.style.background='rgba(255,255,255,.15)'"
     onmouseout="this.style.background='rgba(255,255,255,.04)'"><div style="width:30px;height:2px;background:rgba(255,255,255,.2);border-radius:1px;margin:auto"></div></div>
@@ -8788,19 +8776,6 @@ window.toggleLayerPanelCollapse = function(e){
   if(!panel) return;
   panel.classList.toggle('collapsed');
   if(typeof _updateLpWidthVar === 'function') _updateLpWidthVar();
-};
-
-// Second-level toggle for the #layer-list section itself. Default collapsed —
-// the user expands the シーンレイヤー panel to reveal the 読み込み/書き出し
-// + this sub-header, then clicks here to actually see the layer rows.
-window.toggleLayerListCollapse = function(e){
-  if(e && e.stopPropagation) e.stopPropagation();
-  const list = document.getElementById('layer-list');
-  const chev = document.getElementById('lp-list-chev');
-  if(!list) return;
-  const isOpen = list.style.display !== 'none';
-  list.style.display = isOpen ? 'none' : '';
-  if(chev) chev.style.transform = isOpen ? 'rotate(-90deg)' : 'rotate(0deg)';
 };
 
 function renderLayerList(){
