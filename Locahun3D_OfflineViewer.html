@@ -15428,13 +15428,13 @@ canvas.addEventListener('touchend',e=>{
 // Fix: track the specific touch identifier captured at touchstart, and
 // only react to events for that identifier.
 //
-// Slack zone: per user request, drags up to 2.5× R (150% beyond the
+// Slack zone: per user request, drags up to 3.0× R (200% beyond the
 // visible circle) still register as "full deflection" rather than
-// snapping the joystick off. Beyond 2.5× R the joystick auto-releases.
+// snapping the joystick off. Beyond 3.0× R the joystick auto-releases.
 (()=>{
   const joy=document.getElementById('joy'),knob=document.getElementById('jknob');
   const R=51;        // visible joystick radius (px, post-CSS scaling)
-  const SLACK=R*2.5; // outer "still tracking" radius (150% beyond visible)
+  const SLACK=R*3.0; // outer "still tracking" radius (200% beyond visible)
   const C=88;
   let on=false, jId=-1, bx=88, by=88;
   function resetKnob(){
@@ -15465,7 +15465,7 @@ canvas.addEventListener('touchend',e=>{
     const r=joy.getBoundingClientRect();
     let dx=(t.clientX-r.left)-bx, dy=(t.clientY-r.top)-by;
     const l=Math.sqrt(dx*dx+dy*dy);
-    // Beyond the slack zone (1.5× R) the user has clearly slid OFF the
+    // Beyond the slack zone (3.0× R) the user has clearly slid OFF the
     // joystick — release rather than keep moving forever, which feels
     // worse than the previous "snap-to-zero on edge" bug.
     if(l > SLACK){
