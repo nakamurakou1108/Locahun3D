@@ -12395,12 +12395,16 @@ function animate(now) {
   requestAnimationFrame(animate);
   // Hard gates: GPU context lost or tab hidden → don't render, don't compute
   if(_ctxLost || _tabHidden) return;
-  // No JS-side FRAME_MS gate: requestAnimationFrame is already vsync-locked
-  // by the browser, so a fixed 16.67 ms threshold added nothing on 60 Hz
-  // displays and actively HARMED 120 Hz ProMotion / 144-165 Hz gaming
-  // monitors (it skipped every other rAF, capping them at 60 fps). On 60 Hz,
-  // rAF jitter (~16.5 ↔ 16.83 ms) also tripped the strict `elapsed < FRAME_MS`
-  // test often enough to pull effective fps down to ~45.
+  // ── 60 fps hard cap (re-introduced 2026-05) ──
+  // requestAnimationFrame on its own runs at the display's native refresh
+  // — that means 120 fps on iPad Pro / ProMotion Mac and 144-165 fps on
+  // gaming monitors. Per user request, cap to 60 across every device:
+  // anything past 60 fps just doubles GPU work, halves headroom, and on
+  // iPad Pro accelerates thermal throttling without any perceptible
+  // visual benefit (the scene is splat data, not crisp UI animation).
+  // Threshold = FRAME_MS - 1 ms allows for normal rAF jitter on 60 Hz
+  // displays so we don't accidentally undershoot to 30 fps there.
+  if(now - _lastFrameTime < FRAME_MS - 1) return;
   const elapsed = now - _lastFrameTime;
   _lastFrameTime = now;
 
