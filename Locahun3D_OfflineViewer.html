@@ -6403,13 +6403,24 @@ function subsampleSplatFile(rawBuf, stride){
   }
 }
 // Dispatch helper — call before handing rawBuf to Spark.
-// Stride is determined entirely by `_splatStride()` (localStorage
-// preference, defaulting to 1 on every device). The iPhone-specific
-// auto-halve for >300 MB files is now seeded into localStorage at
-// load time by loadSplatFile() so the UI toggle reflects the state
-// truthfully and the user can override either direction.
+// Base stride comes from `_splatStride()` (localStorage user preference,
+// defaulting to 1). For PLY / SPLAT files larger than 300 MB the actual
+// applied stride is escalated to at least 4 for THIS load, regardless
+// of what's in localStorage. Rationale:
+//   • loadSplatFile() seeds localStorage = '2' so the polygon-halve
+//     toggle visually flips ON and future loads of typical files
+//     halve at the user's persistent preference.
+//   • But the current >300 MB load is what risks crashing the tab; for
+//     that load alone we go further (stride 4 = quarter of the splats)
+//     so the parse + Spark accumulator fit under the memory ceiling.
+//   • The localStorage value is NOT mutated by this escalation — only
+//     the runtime stride for this single decimate call.
 function maybeDecimateSplatBuffer(rawBuf, ext){
-  const stride = _splatStride();
+  let stride = _splatStride();
+  if((ext === 'ply' || ext === 'splat') && rawBuf && rawBuf.byteLength &&
+     rawBuf.byteLength > 300 * 1024 * 1024){
+    stride = Math.max(stride, 4);
+  }
   if(stride <= 1) return rawBuf;
   if(ext === 'ply'){
     const out = subsamplePLY(rawBuf, stride);
