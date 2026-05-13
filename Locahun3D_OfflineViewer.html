@@ -921,16 +921,17 @@ body{position:fixed;top:0;left:0;}
   #topbar .tb-update{padding:1px 5px;font-size:.55em;}
   #topbar .tb-lang{padding:1px 5px;font-size:.55em;}
   #topbar .tb-bug{padding:1px 5px;font-size:.62em;}
-  /* Action row (カメラリセット / アバター歩行 / AR) — keep horizontally
-     centred but cut size roughly in half. */
-  #view-tl-btns{top:36px;gap:4px;}
+  /* Action row (カメラリセット / アバター歩行 / AR) — sit FLUSH against
+     the bottom of the topbar so the 3-D view starts as high as possible.
+     User asked for "buttons just below top UI, view area bigger". */
+  #view-tl-btns{top:30px;gap:3px;padding-top:1px;}
   #view-tl-btns > button,
   #view-tl-btns button{
-    padding:3px 7px !important;font-size:.6em !important;
+    padding:2px 6px !important;font-size:.55em !important;line-height:1.2 !important;
   }
-  /* Top-right quality / fps badge — smaller padding + font. */
+  /* Top-right quality / fps badge — same flush placement next to topbar. */
   #qi-badge{
-    top:36px;right:8px;padding:2px 7px;font-size:.6em;gap:4px;
+    top:30px;right:6px;padding:2px 6px;font-size:.55em;gap:3px;line-height:1.2;
   }
 }
 
