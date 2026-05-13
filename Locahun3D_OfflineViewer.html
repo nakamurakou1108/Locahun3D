@@ -7491,6 +7491,7 @@ const arMode = {
   baselinePitch: 0,      // pitch baseline — touch drag shifts this so the
                           // user can re-center the view while gyro is active
   baselineCaptured: false,
+  _savedPixelRatio: null, // renderer pixel-ratio at AR entry, restored on exit
 };
 // Re-used scratch primitives so the 60 Hz orientation handler doesn't
 // thrash GC.
@@ -7530,17 +7531,38 @@ async function _arEnter(){
   }
   // Request rear-facing camera. `ideal:'environment'` lets browsers without
   // a back camera (e.g. desktops with only a webcam) still grant the front
-  // cam rather than failing outright.
+  // cam rather than failing outright. We also CAP the requested resolution
+  // — iOS otherwise hands us a 1920×1080 (or even 4K) stream which the
+  // compositor then has to scale and blend with the WebGL canvas every
+  // frame, eating frame budget for visual quality the user can't perceive
+  // through a noisy passthrough background anyway. Pinned to roughly the
+  // canvas pixel size (max 1280×720) — the camera's intrinsic noise
+  // dominates any sharpness loss at this scale.
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280, max: 1920 },
+        height: { ideal: 720,  max: 1080 },
+        frameRate: { ideal: 30, max: 30 },
+      },
       audio: false,
     });
   } catch(e){
-    console.warn('[AR] getUserMedia failed:', e);
-    showUndoToast(T('ar-permission-denied'));
-    return;
+    console.warn('[AR] getUserMedia failed, retrying without resolution hints:', e);
+    // Some Android devices reject explicit constraints; fall back to a
+    // bare `environment` request so AR still works rather than failing.
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+    } catch(e2){
+      console.warn('[AR] getUserMedia retry failed:', e2);
+      showUndoToast(T('ar-permission-denied'));
+      return;
+    }
   }
   // Mount the camera stream in the backdrop <video> element
   const video = document.getElementById('ar-video');
@@ -7560,6 +7582,20 @@ async function _arEnter(){
   // the visible black.
   if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(0);
   document.body.classList.add('ar-active');
+  // iOS Safari compositor cost scales steeply with pixel count when a live
+  // <video> and a transparent WebGL canvas are stacked (the rAF clamp that
+  // pinned iPad to ~8 fps with 0.47 ms GPU submit was almost entirely
+  // composition cost, not draw work). Half the pixels = roughly half the
+  // composition workload, with no visible quality loss because the
+  // background is a noisy live camera feed anyway. Apply immediately
+  // (bypass the watchdog's 600 ms idle gate) so the user feels the
+  // smoother frame rate the moment they enter AR. Saved on entry so we
+  // can restore the pre-AR ratio on exit.
+  try {
+    arMode._savedPixelRatio = renderer.getPixelRatio();
+    const arPR = Math.min(arMode._savedPixelRatio, 1.0);
+    renderer.setPixelRatio(arPR);
+  } catch(_){}
   // Capture yaw at entry so the gyro deltas apply relative to current view
   // (otherwise the scene snaps to wherever the phone happens to point first).
   arMode.baseYaw = yaw;
@@ -7595,9 +7631,24 @@ async function _arEnter(){
     // _pitchTarget = device-pitch shifted by touch-adjustable pitch baseline
     // Touch drag handlers nudge baselineYaw / baselinePitch so the user
     // can recenter while the gyro keeps tracking.
-    _yawTarget   = arMode.baseYaw + (yawNew - arMode.baselineYaw);
-    _pitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew - arMode.baselinePitch));
-    markDirty(3);
+    const newYawTarget   = arMode.baseYaw + (yawNew - arMode.baselineYaw);
+    const newPitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew - arMode.baselinePitch));
+    // Coalesce: only mark dirty when the orientation actually changed by
+    // a perceptible amount (~0.1°). The deviceorientation event fires at
+    // up to 100 Hz on iOS — calling markDirty() on every event keeps the
+    // renderer in continuous-render mode and prevents Safari's compositor
+    // from settling, which on iPad caps rAF at 8–15 fps even when the GPU
+    // is mostly idle. Below the threshold we still update the targets so
+    // the next render reflects the freshest pose, but we don't force the
+    // animate loop to wake up just for sub-pixel jitter.
+    const ARGYRO_EPS = 0.0017;  // ~0.1°
+    const dyaw   = Math.abs(newYawTarget   - _yawTarget);
+    const dpitch = Math.abs(newPitchTarget - _pitchTarget);
+    _yawTarget   = newYawTarget;
+    _pitchTarget = newPitchTarget;
+    if(dyaw > ARGYRO_EPS || dpitch > ARGYRO_EPS){
+      markDirty(2);
+    }
   };
   window.addEventListener('deviceorientation', arMode.orientHandler, true);
   // UI state — swap the AR button into "AR 終了" mode (red, pulsing) so
@@ -7644,6 +7695,16 @@ function _arExit(){
   }
   arMode.baselineCaptured = false;
   if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(1);
+  // Restore the pre-AR pixel ratio. If for some reason the saved value
+  // is bogus, fall back to the standard tier-aware calculation.
+  try {
+    if(typeof arMode._savedPixelRatio === 'number' && arMode._savedPixelRatio > 0){
+      renderer.setPixelRatio(arMode._savedPixelRatio);
+    } else if(typeof _PR_CAP === 'number'){
+      renderer.setPixelRatio(Math.min(devicePixelRatio, _PR_CAP) * qualScale);
+    }
+  } catch(_){}
+  arMode._savedPixelRatio = null;
   document.body.classList.remove('ar-active');
   // Restore AR button to its idle "📱 AR" appearance.
   const btn = document.getElementById('btnAR');
@@ -10943,7 +11004,19 @@ function updatePerfStats(){
   // ── FPS & render time ──
   const _fpsFb = document.getElementById('fps');
   const fps  = _fpsDisplay || (_fpsFb ? Math.round(parseFloat(_fpsFb.textContent)||0) : 0);
-  const renderMs = Math.max(0.01, _ftAvg);   // actual render() call time
+  // HONEST FRAME COST: use _wallMsAvg (real per-frame wall clock) rather
+  // than _ftAvg (which is only the synchronous renderer.render() wrap = GPU
+  // command submission). On iPad Safari we were seeing 0.47 ms "render"
+  // with 8 fps — the gap is entirely outside renderer.render(): main-thread
+  // work + iOS compositor throttle. Showing _wallMsAvg makes that visible
+  // so the watchdog and the user see the same number. Fallback to a fps-
+  // derived estimate if _wallMsAvg hasn't accumulated samples yet.
+  const fpsDerived = fps > 0 ? (1000 / fps) : 0;
+  const wallMs = (typeof _wallMsAvg === 'number' && _wallMsAvg > 0)
+                 ? _wallMsAvg
+                 : fpsDerived;
+  const submitMs = Math.max(0.01, _ftAvg);   // GPU submit only, kept for debug line
+  const renderMs = Math.max(0.01, wallMs > 0 ? wallMs : submitMs);
   const budget   = FRAME_MS;                  // 16.67ms @ 60fps
 
   // Utilisation: render time vs frame budget (>100% = can't hit 60fps)
@@ -10960,7 +11033,11 @@ function updatePerfStats(){
 
   s('qp-fps').textContent  = fps;
   s('qp-fps').style.color  = fpsCol;
-  s('qp-frametime').textContent = renderMs.toFixed(2)+T('budget-ms')+budget.toFixed(1)+'ms)';
+  // Frame-time line: real wall time + GPU submit in parentheses so the
+  // user can tell at a glance whether the bottleneck is GPU work or
+  // somewhere else on the main thread / compositor.
+  s('qp-frametime').textContent =
+    renderMs.toFixed(2) + ' ms  (submit '+submitMs.toFixed(2)+' / 予算 '+budget.toFixed(1)+'ms)';
 
   // Mirror live FPS into the always-visible top-right quality badge.
   // The badge's quality-level label is updated in setQuality() separately,
@@ -11661,7 +11738,15 @@ function animate(now) {
   // Gate the explicit Spark sort-hint on _activeSplatCount: when no splat
   // layer is loaded the inner loop and the layers[] iteration both become
   // no-ops. Counter is bumped in addLayer / removed in remove paths.
-  if (motion && window._activeSplatCount) {
+  if (motion && window._activeSplatCount &&
+      !(typeof arMode !== 'undefined' && arMode && arMode.active)) {
+    // In AR mode the gyro nudges yaw/pitch on every device-orientation
+    // event (~60–100 Hz), so `motion` is true essentially every frame.
+    // Calling sm.update(camera) per layer at 50 ms cadence then saturates
+    // Spark's sort worker — but Spark already runs its automatic sort
+    // inside renderer.render(), so the explicit hint here is redundant
+    // for the AR case. Skipping it removes a major iOS-Safari rAF stall
+    // source. Non-AR paths keep the hint (it does help with fast pans).
     const _now = now;
     const _dyaw   = yaw   - (_lastSortYaw   || 0);
     const _dpitch = pitch - (_lastSortPitch || 0);
@@ -11790,7 +11875,12 @@ function animate(now) {
             `(render ~${_ftAvg.toFixed(1)} ms, wall ~${_wallMsAvg.toFixed(1)} ms, target 30 fps)`);
         }
       }
-    } else if(_ftAvg < 11 && _wallMsAvg < 14 && qualScale < _qualPreferred - 0.001){
+    } else if(_ftAvg < 11 && _wallMsAvg < 14 && qualScale < _qualPreferred - 0.001&&
+              !(typeof arMode !== 'undefined' && arMode && arMode.active)){
+      // While AR is active we intentionally hold pixel-ratio at the
+      // AR-entry override (typically 1.0) so the iOS Safari compositor
+      // stays under its rAF-throttle threshold. Letting the watchdog
+      // up-step here would defeat that override and pull fps back down.
       _wd.fastStreak++;
       _wd.slowStreak = Math.max(0, _wd.slowStreak - 2);
       if(_wd.fastStreak > 600){
