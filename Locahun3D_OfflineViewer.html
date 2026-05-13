@@ -1159,8 +1159,9 @@ body{position:fixed;top:0;left:0;}
 
 <!-- ══ View Top-Left Buttons (projection toggle + camera reset) ══ -->
 <div id="view-tl-btns" style="
-  position:fixed;top:57px;left:295px;
-  display:none;flex-direction:row;gap:6px;z-index:60;pointer-events:all;">
+  position:fixed;top:57px;left:50%;transform:translateX(-50%);
+  display:none;flex-direction:row;gap:6px;z-index:60;pointer-events:all;
+  justify-content:center;">
   <button id="btn-cam-reset" onclick="resetCameraToInitial()"
     style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);
            color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;
@@ -14555,11 +14556,12 @@ window.toggleTypeVis = function(type){
     panel.style.width=newW+'px';
     const ftBar=document.getElementById('lp-footer-bar');
     if(ftBar) ftBar.style.width=newW+'px';
-    // Update ibox, view-tl-btns, minimap offset
+    // Update ibox + minimap offsets (these still hug the panel right edge).
+    // view-tl-btns is intentionally NOT updated here — per user request the
+    // top-row buttons (カメラリセット / オブジェクト追加 / アバター歩行 /
+    // AR) stay centered on the viewport regardless of layer-panel width.
     const ibox=document.querySelector('#hud .ibox');
     if(ibox) ibox.style.left=(newW+10)+'px';
-    const vtlb=document.getElementById('view-tl-btns');
-    if(vtlb) vtlb.style.left=(newW+10)+'px';
     const mmf=document.getElementById('minimap-float');
     if(mmf) mmf.style.left=(newW+16)+'px';
     // Keep the bottom cbar centred within the (viewport - panel) area.
