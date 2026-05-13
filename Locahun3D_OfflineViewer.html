@@ -8193,12 +8193,17 @@ async function _arEnter(){
     renderer.setPixelRatio(v2PR);
   } catch(_){}
 
-  // Hide env dome while AR is active — same reason as V1: a fullscreen
-  // sky preset sphere would obscure the camera passthrough.
-  if(env && env.mesh){
-    arMode._envWasVisible = !!env.mesh.visible;
-    env.mesh.visible = false;
-  }
+  // Env dome visibility is NOT touched on AR entry anymore.
+  // Rationale: in the integrated V2 path the camera image is a fullscreen
+  // quad at the far-plane depth, drawn first; the env dome (a sphere
+  // around the camera) renders OVER it normally. So if the user has an
+  // env preset selected, they see the sky (and the camera is occluded
+  // behind it, which is fine). If they want the camera background
+  // visible, they set 環境 to "OFF" — the dome becomes invisible and
+  // the camera quad shows through. This puts background composition
+  // back under the user's control instead of AR silently overriding it.
+  // (Previous auto-hide was a V1 holdover where the transparent canvas
+  // made the dome physically block the camera; not needed in V2.)
 
   document.body.classList.add('ar-active');
 
@@ -8306,11 +8311,7 @@ function _arExit(){
   } catch(_){}
   arMode._savedPixelRatio = null;
   arMode.baselineCaptured = false;
-  // Restore env dome visibility (was hidden on AR-v2 entry).
-  if(env && env.mesh && typeof arMode._envWasVisible === 'boolean'){
-    env.mesh.visible = arMode._envWasVisible;
-  }
-  arMode._envWasVisible = null;
+  // (env dome visibility is no longer touched by AR — see entry comment.)
   document.body.classList.remove('ar-active');
   const btn = document.getElementById('btnAR');
   if(btn){
