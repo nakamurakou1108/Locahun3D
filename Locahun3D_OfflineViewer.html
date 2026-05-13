@@ -2420,6 +2420,12 @@ body.ar-active #c{background:transparent !important;}
 body.ar-active #motion-vignette{display:none !important;}
 /* Letterbox bars + dropzone visuals would block the camera feed if visible. */
 body.ar-active #dz{display:none !important;}
+/* AR v2 (WebGL-integrated passthrough): canvas is OPAQUE — the video is
+   drawn inside the WebGL scene as a fullscreen quad, so we do NOT want
+   the body/canvas to be transparent. The vignette would also fight the
+   gyro-rotated background. Dropzone hidden same as V1 to free up view. */
+body.ar-active-v2 #motion-vignette{display:none !important;}
+body.ar-active-v2 #dz{display:none !important;}
 </style>
 
 <!-- Drop zone (REEL — ASPECT FRAMES) -->
@@ -7702,7 +7708,32 @@ const _arQuatOrient   = new THREE.Quaternion();
 const _arForwardScratch = new THREE.Vector3();
 const _arZAxis = new THREE.Vector3(0, 0, 1);
 
+// AR variant selector: V1 (default) is the layered <video> + transparent
+// canvas approach. V2 is the WebGL-integrated experimental path — the
+// camera feed becomes a Three.js VideoTexture rendered as a fullscreen
+// quad inside the same WebGL canvas. Goal: bypass iOS Safari's compositor
+// throttle that pins V1 to ~8 fps on iPad. Activated via ?ar=v2.
+function _arVariant(){
+  try {
+    const m = location.search.match(/[?&]ar(?:mode)?=([\w-]+)/i);
+    if(m && /^(v2|integrated|webgl|gl)$/i.test(m[1])) return 'v2';
+  } catch(_){}
+  return 'v1';
+}
+
 window.toggleARMode = function(){
+  // Dispatch to V1 or V2 depending on URL flag. Both share the same
+  // #btnAR button and the same red "AR 終了" toggle visual; only the
+  // render strategy differs.
+  if(_arVariant() === 'v2'){
+    if(arModeV2.active){ _arExitV2(); return; }
+    _arEnterV2().catch(e=>{
+      console.error('[AR-v2] enter failed', e);
+      if(typeof showUndoToast==='function') showUndoToast(T('ar-permission-denied'));
+      _arExitV2();
+    });
+    return;
+  }
   if(arMode.active){ _arExit(); return; }
   _arEnter().catch(e=>{
     console.error('[AR] enter failed', e);
@@ -7940,6 +7971,338 @@ function _arExit(){
   showUndoToast(T('ar-off'));
   markDirty(10);
 }
+
+// ══════════════════════════════════════════════════
+//  AR MODE V2 — WebGL-integrated camera passthrough (experimental)
+// ══════════════════════════════════════════════════
+// Hypothesis: iPad's 8 fps in V1 comes from iOS Safari's compositor
+// throttling rAF when it has to stack a translucent WebGL canvas over a
+// live <video> element. V2 eliminates the second layer: the camera feed
+// becomes a THREE.VideoTexture rendered as a fullscreen quad INSIDE the
+// WebGL scene, with the canvas kept opaque. Only one compositor layer to
+// blend, plus we own the visual integration (color, orientation, fit).
+//
+// Trade-off: every frame we pay `texImage2D(HTMLVideoElement)` upload
+// cost, which iOS Safari sometimes does synchronously. If that single
+// cost is < 16 ms we win big; if it's >> 16 ms we lose the win. Live
+// test on iPad will tell us. V1 stays the default so this experiment
+// can't break the production AR flow.
+//
+// Enabled via `?ar=v2` URL param. The #btnAR button auto-dispatches.
+const arModeV2 = {
+  active: false,
+  video: null,           // off-screen <video> (not in visual DOM)
+  stream: null,
+  videoTexture: null,
+  bgMesh: null,
+  bgMat: null,
+  bgGeom: null,
+  orientHandler: null,
+  baseYaw: 0,
+  baselineYaw: 0,
+  baselinePitch: 0,
+  baselineCaptured: false,
+  _savedPixelRatio: null,
+  _updateUniforms: null,
+  _onMetadata: null,
+};
+
+async function _arEnterV2(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showUndoToast(T('ar-unsupported'));
+    return;
+  }
+  if(typeof DeviceOrientationEvent !== 'undefined' &&
+     typeof DeviceOrientationEvent.requestPermission === 'function'){
+    try {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if(r !== 'granted'){
+        showUndoToast(T('ar-permission-denied'));
+        return;
+      }
+    } catch(_){}
+  }
+  // Same 720p / 30 fps cap as V1 — minimises texImage2D upload cost.
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280, max: 1280 },
+        height: { ideal: 720,  max: 720  },
+        frameRate: { ideal: 30, max: 30 },
+      },
+      audio: false,
+    });
+  } catch(e){
+    console.warn('[AR-v2] getUserMedia failed, retrying:', e);
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+    } catch(e2){
+      console.warn('[AR-v2] getUserMedia retry failed:', e2);
+      showUndoToast(T('ar-permission-denied'));
+      return;
+    }
+  }
+  try {
+    const track = stream.getVideoTracks()[0];
+    if(track && typeof track.applyConstraints === 'function'){
+      const s = track.getSettings ? track.getSettings() : {};
+      if((s.width || 0) > 1280 || (s.height || 0) > 720 || (s.frameRate || 0) > 30){
+        await track.applyConstraints({
+          width:  { max: 1280 },
+          height: { max: 720  },
+          frameRate: { max: 30 },
+        }).catch(()=>{});
+      }
+    }
+  } catch(_){}
+
+  // ── Off-screen video element ──
+  // Kept out of the visual DOM (display:none) but the MediaStream still
+  // decodes — Three.js VideoTexture uploads from it each frame.
+  const video = document.createElement('video');
+  video.autoplay = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.style.cssText = 'position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+  document.body.appendChild(video);
+  video.srcObject = stream;
+  try { await video.play(); } catch(_){ /* iOS sometimes throws on programmatic play */ }
+
+  // ── VideoTexture ──
+  const tex = new THREE.VideoTexture(video);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  if('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = false;
+
+  // ── Background quad ──
+  // Vertex shader writes NDC directly so the quad always covers the full
+  // viewport regardless of the main scene's camera. Fragment shader does
+  // cover-style aspect-fit (no black bars; centre-crops if AR mismatched)
+  // and screen-orientation rotation.
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      map:         { value: tex },
+      canvasAR:    { value: innerWidth / Math.max(1, innerHeight) },
+      videoAR:     { value: 16/9 }, // updated on loadedmetadata
+      orientation: { value: 0   }, // 0 / ±PI/2 / PI
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main(){
+        vUv = uv;
+        // Bypass projection/view matrices: place quad at far depth in NDC.
+        gl_Position = vec4(position.xy, 0.99999, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision mediump float;
+      uniform sampler2D map;
+      uniform float canvasAR;
+      uniform float videoAR;
+      uniform float orientation;
+      varying vec2 vUv;
+      void main(){
+        // Centre origin so rotation + scale operate around (0.5, 0.5).
+        vec2 uv = vUv - 0.5;
+        // Rotate UVs by negative screen-orientation so the world stays
+        // upright when the device is held in landscape vs portrait.
+        float c = cos(orientation), s = sin(orientation);
+        uv = mat2(c, -s, s, c) * uv;
+        // Cover-fit: scale UVs so the video fills the canvas, cropping
+        // whichever axis exceeds. Compares orientation-adjusted aspect
+        // (canvas) to the video's intrinsic aspect.
+        float effCanvasAR = abs(c) > 0.5 ? canvasAR : (1.0 / canvasAR);
+        float ratio = effCanvasAR / videoAR;
+        if(ratio > 1.0){
+          // Canvas wider than video → fit video width, crop video height.
+          uv.y /= ratio;
+        } else {
+          // Canvas taller than video → fit video height, crop video width.
+          uv.x *= ratio;
+        }
+        uv += 0.5;
+        // Clamp so wraparound noise at extreme edges doesn't show.
+        uv = clamp(uv, 0.0, 1.0);
+        gl_FragColor = texture2D(map, uv);
+      }
+    `,
+    depthTest:  false,
+    depthWrite: false,
+    transparent: false,
+  });
+  const geom = new THREE.PlaneGeometry(2, 2);
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.renderOrder = -9999;
+  mesh.frustumCulled = false;
+  mesh.matrixAutoUpdate = false;
+  scene.add(mesh);
+
+  // ── Aspect / orientation uniform updater ──
+  const updateUniforms = ()=>{
+    if(!arModeV2.bgMat) return;
+    const u = arModeV2.bgMat.uniforms;
+    const vw = video.videoWidth  || 1280;
+    const vh = video.videoHeight || 720;
+    u.canvasAR.value = innerWidth / Math.max(1, innerHeight);
+    u.videoAR.value  = vw / Math.max(1, vh);
+    const oDeg = (screen.orientation && screen.orientation.angle != null)
+                ? screen.orientation.angle
+                : (window.orientation || 0);
+    u.orientation.value = oDeg * Math.PI / 180;
+  };
+  arModeV2._onMetadata = ()=>updateUniforms();
+  video.addEventListener('loadedmetadata', arModeV2._onMetadata);
+  updateUniforms();
+  arModeV2._updateUniforms = updateUniforms;
+  window.addEventListener('resize', updateUniforms);
+  if(screen.orientation && screen.orientation.addEventListener){
+    try { screen.orientation.addEventListener('change', updateUniforms); } catch(_){}
+  }
+
+  // ── Pixel ratio: V2 is single-layer so we can afford a higher PR than
+  // V1 (which had to cut the compositor cost via PR=1.0). Cap at 1.5 to
+  // get sharper splats while still trimming texImage2D upload cost. ──
+  try {
+    arModeV2._savedPixelRatio = renderer.getPixelRatio();
+    const v2PR = Math.min(arModeV2._savedPixelRatio, 1.5);
+    renderer.setPixelRatio(v2PR);
+  } catch(_){}
+
+  document.body.classList.add('ar-active-v2');
+
+  // ── Device-orientation handler (yaw + pitch) — same math as V1 ──
+  arModeV2.baseYaw = yaw;
+  arModeV2.baselineCaptured = false;
+  arModeV2.orientHandler = function(ev){
+    if(ev.alpha == null || ev.beta == null) return;
+    const orient = (screen.orientation && screen.orientation.angle != null)
+                  ? screen.orientation.angle
+                  : (window.orientation || 0);
+    const orientRad = orient * Math.PI / 180;
+    const alpha = ev.alpha * Math.PI / 180;
+    const beta  = ev.beta  * Math.PI / 180;
+    const gamma = ev.gamma != null ? ev.gamma * Math.PI / 180 : 0;
+    _arEulerScratch.set(beta, alpha, -gamma, 'YXZ');
+    _arQuatScratch.setFromEuler(_arEulerScratch);
+    _arQuatScratch.multiply(_arQuatScreenAdjust);
+    _arQuatOrient.setFromAxisAngle(_arZAxis, -orientRad);
+    _arQuatScratch.multiply(_arQuatOrient);
+    _arForwardScratch.set(0,0,-1).applyQuaternion(_arQuatScratch);
+    const yawNew   = Math.atan2(-_arForwardScratch.x, -_arForwardScratch.z);
+    const pitchNew = Math.asin(Math.max(-1, Math.min(1, _arForwardScratch.y)));
+    if(!arModeV2.baselineCaptured){
+      arModeV2.baselineYaw = yawNew;
+      arModeV2.baselinePitch = pitchNew;
+      arModeV2.baselineCaptured = true;
+      return;
+    }
+    const newYawTarget   = arModeV2.baseYaw + (yawNew - arModeV2.baselineYaw);
+    const newPitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew - arModeV2.baselinePitch));
+    const ARGYRO_EPS = 0.0017;
+    const dyaw   = Math.abs(newYawTarget   - _yawTarget);
+    const dpitch = Math.abs(newPitchTarget - _pitchTarget);
+    _yawTarget   = newYawTarget;
+    _pitchTarget = newPitchTarget;
+    if(dyaw > ARGYRO_EPS || dpitch > ARGYRO_EPS) markDirty(2);
+  };
+  window.addEventListener('deviceorientation', arModeV2.orientHandler, true);
+
+  // ── Store handles + UI swap ──
+  arModeV2.video = video;
+  arModeV2.stream = stream;
+  arModeV2.videoTexture = tex;
+  arModeV2.bgMesh = mesh;
+  arModeV2.bgMat = mat;
+  arModeV2.bgGeom = geom;
+  arModeV2.active = true;
+
+  const btn = document.getElementById('btnAR');
+  if(btn){
+    btn.classList.add('on');
+    btn.setAttribute('title', T('tt-ar-exit') || 'AR モードを終了');
+    btn.blur();
+    for(const n of btn.childNodes){
+      if(n.nodeType === Node.TEXT_NODE){ n.textContent = '✕ '; break; }
+    }
+  }
+  const lbl = document.getElementById('lbl-ar');
+  if(lbl) lbl.textContent = T('lbl-ar-exit');
+  showUndoToast('📱 AR v2 (WebGL 統合) ON — 端末を傾けて視点を変えられます');
+  markDirty(10);
+}
+
+function _arExitV2(){
+  arModeV2.active = false;
+  if(arModeV2.stream){
+    try { arModeV2.stream.getTracks().forEach(t=>t.stop()); } catch(_){}
+    arModeV2.stream = null;
+  }
+  if(arModeV2.video){
+    try { arModeV2.video.pause(); } catch(_){}
+    if(arModeV2._onMetadata){
+      try { arModeV2.video.removeEventListener('loadedmetadata', arModeV2._onMetadata); } catch(_){}
+    }
+    arModeV2.video.srcObject = null;
+    if(arModeV2.video.parentNode) arModeV2.video.parentNode.removeChild(arModeV2.video);
+    arModeV2.video = null;
+  }
+  arModeV2._onMetadata = null;
+  if(arModeV2.bgMesh){
+    try { scene.remove(arModeV2.bgMesh); } catch(_){}
+    arModeV2.bgMesh = null;
+  }
+  if(arModeV2.bgMat){ try { arModeV2.bgMat.dispose(); } catch(_){} arModeV2.bgMat = null; }
+  if(arModeV2.bgGeom){ try { arModeV2.bgGeom.dispose(); } catch(_){} arModeV2.bgGeom = null; }
+  if(arModeV2.videoTexture){ try { arModeV2.videoTexture.dispose(); } catch(_){} arModeV2.videoTexture = null; }
+  if(arModeV2.orientHandler){
+    window.removeEventListener('deviceorientation', arModeV2.orientHandler, true);
+    arModeV2.orientHandler = null;
+  }
+  if(arModeV2._updateUniforms){
+    try { window.removeEventListener('resize', arModeV2._updateUniforms); } catch(_){}
+    if(screen.orientation && screen.orientation.removeEventListener){
+      try { screen.orientation.removeEventListener('change', arModeV2._updateUniforms); } catch(_){}
+    }
+    arModeV2._updateUniforms = null;
+  }
+  try {
+    if(typeof arModeV2._savedPixelRatio === 'number' && arModeV2._savedPixelRatio > 0){
+      renderer.setPixelRatio(arModeV2._savedPixelRatio);
+    } else if(typeof _PR_CAP === 'number'){
+      renderer.setPixelRatio(Math.min(devicePixelRatio, _PR_CAP) * qualScale);
+    }
+  } catch(_){}
+  arModeV2._savedPixelRatio = null;
+  arModeV2.baselineCaptured = false;
+  document.body.classList.remove('ar-active-v2');
+  const btn = document.getElementById('btnAR');
+  if(btn){
+    btn.classList.remove('on');
+    btn.setAttribute('title', T('tt-ar') || 'AR モード');
+    for(const n of btn.childNodes){
+      if(n.nodeType === Node.TEXT_NODE){ n.textContent = '📱 '; break; }
+    }
+    btn.blur();
+  }
+  const lbl = document.getElementById('lbl-ar');
+  if(lbl) lbl.textContent = T('lbl-ar');
+  showUndoToast(T('ar-off'));
+  markDirty(10);
+}
+
+// V2 keeps the touchstart/touchmove rotation hook from V1 working: the
+// existing touch handlers detect arMode.active first and modify its
+// baselines. We piggy-back V2 by patching the same handlers — see the
+// joystick / touch-look code further down. For correctness, both V1
+// and V2 cannot be active simultaneously; the toggle ensures that.
 
 // Reposition avatar to current camera/view position. Called by the reset
 // button when walk mode is active.
@@ -11970,14 +12333,16 @@ function animate(now) {
   // layer is loaded the inner loop and the layers[] iteration both become
   // no-ops. Counter is bumped in addLayer / removed in remove paths.
   if (motion && window._activeSplatCount &&
-      !(typeof arMode !== 'undefined' && arMode && arMode.active)) {
-    // In AR mode the gyro nudges yaw/pitch on every device-orientation
-    // event (~60–100 Hz), so `motion` is true essentially every frame.
-    // Calling sm.update(camera) per layer at 50 ms cadence then saturates
-    // Spark's sort worker — but Spark already runs its automatic sort
-    // inside renderer.render(), so the explicit hint here is redundant
-    // for the AR case. Skipping it removes a major iOS-Safari rAF stall
-    // source. Non-AR paths keep the hint (it does help with fast pans).
+      !(typeof arMode   !== 'undefined' && arMode   && arMode.active) &&
+      !(typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active)) {
+    // In AR mode (either variant) the gyro nudges yaw/pitch on every
+    // device-orientation event (~60–100 Hz), so `motion` is true
+    // essentially every frame. Calling sm.update(camera) per layer at
+    // 50 ms cadence then saturates Spark's sort worker — but Spark
+    // already runs its automatic sort inside renderer.render(), so the
+    // explicit hint here is redundant for the AR case. Skipping it
+    // removes a major iOS-Safari rAF stall source. Non-AR paths keep
+    // the hint (it does help with fast pans).
     const _now = now;
     const _dyaw   = yaw   - (_lastSortYaw   || 0);
     const _dpitch = pitch - (_lastSortPitch || 0);
@@ -12106,12 +12471,13 @@ function animate(now) {
             `(render ~${_ftAvg.toFixed(1)} ms, wall ~${_wallMsAvg.toFixed(1)} ms, target 30 fps)`);
         }
       }
-    } else if(_ftAvg < 11 && _wallMsAvg < 14 && qualScale < _qualPreferred - 0.001&&
-              !(typeof arMode !== 'undefined' && arMode && arMode.active)){
-      // While AR is active we intentionally hold pixel-ratio at the
-      // AR-entry override (typically 1.0) so the iOS Safari compositor
-      // stays under its rAF-throttle threshold. Letting the watchdog
-      // up-step here would defeat that override and pull fps back down.
+    } else if(_ftAvg < 11 && _wallMsAvg < 14 && qualScale < _qualPreferred - 0.001 &&
+              !(typeof arMode   !== 'undefined' && arMode   && arMode.active) &&
+              !(typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active)){
+      // While EITHER AR variant is active we intentionally hold the
+      // pixel-ratio at the AR-entry override so iOS Safari compositor /
+      // texImage2D cost stays manageable. Letting the watchdog up-step
+      // here would defeat the override and pull fps back down.
       _wd.fastStreak++;
       _wd.slowStreak = Math.max(0, _wd.slowStreak - 2);
       if(_wd.fastStreak > 600){
@@ -14920,16 +15286,23 @@ canvas.addEventListener('touchmove',e=>{
     if(t.identifier===tlId){
       const dx = (t.clientX - tlX) * 0.004;
       const dy = (t.clientY - tlY) * 0.004;
-      // AR mode: the gyro handler continuously re-asserts _yawTarget /
-      // _pitchTarget on every deviceorientation event (~60 Hz), so writing
-      // directly to those targets here would be erased instantly. Instead
-      // we shift the AR baselines by the same amount — the gyro formula
-      // (`baseYaw + (yawNew - baselineYaw)`) then carries the touch
-      // adjustment forward as a persistent offset on top of live device
-      // orientation, exactly the way "drag-to-recenter" should feel.
-      if(typeof arMode !== 'undefined' && arMode && arMode.active && arMode.baselineCaptured){
+      // AR mode (V1 or V2): the gyro handler continuously re-asserts
+      // _yawTarget / _pitchTarget on every deviceorientation event
+      // (~60 Hz), so writing directly to those targets here would be
+      // erased instantly. Instead we shift the AR baselines by the same
+      // amount — the gyro formula (`baseYaw + (yawNew - baselineYaw)`)
+      // then carries the touch adjustment forward as a persistent offset
+      // on top of live device orientation, exactly the way "drag-to-
+      // recenter" should feel. Same hook applies to V2 (WebGL-integrated
+      // passthrough); the two modes are mutually exclusive at runtime.
+      const _arV1On = (typeof arMode   !== 'undefined' && arMode   && arMode.active   && arMode.baselineCaptured);
+      const _arV2On = (typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active && arModeV2.baselineCaptured);
+      if(_arV1On){
         arMode.baselineYaw   += dx;
         arMode.baselinePitch += dy;
+      } else if(_arV2On){
+        arModeV2.baselineYaw   += dx;
+        arModeV2.baselinePitch += dy;
       } else {
         _yawTarget   -= dx;
         _pitchTarget  = Math.max(-1.55, Math.min(1.55, _pitchTarget - dy));
