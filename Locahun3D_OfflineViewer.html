@@ -6618,106 +6618,116 @@ function _makeWalkClip(bones, opts){
   // (that's where the previous Euler hack broke) — each keyframe gets
   // BOTH the drop and the swing as separate world-axis rotations.
 
-  const SWING_LEG  = 35;   // ± deg, upper leg swing about world X
-  const KNEE       = 50;   // deg, knee bend on back-swing
-  const KNEE_PASS  = 18;   // deg, slight knee bend during passing pose
-  const SWING_ARM  = 28;   // ± deg, upper arm swing about world X
-  // Arm drop: 75° from T-pose horizontal → 15° outward from straight down.
-  // Previously 88-90° = arms straight down = swing-back phase would clip
-  // through hips ("手の振りが尻に貫通"). 15° outward gives clearance.
-  const ARM_DROP   = 75;
-  // Hips vertical bob — body rises during PASSING, sinks during DOWN.
-  // Magnitude in BIND (centimetre) units since Mixamo skeleton bones are
-  // in cm and only the wrapper rig is scaled to metres. ~2.5cm peak.
-  const HIP_BOB    = 2.5;
-  // Foot rotation deltas applied as bone-LOCAL Euler X (in degrees).
-  // Local because the parent (lowerLeg) rotates significantly during the
-  // cycle — a world-frame rotation would smear with the parent's swing.
-  const FOOT_HEEL  =  18;  // toes up (heel-strike pose)
-  const FOOT_PUSH  = -30;  // toes down (push-off pose)
-  const FOOT_FLAT  =   0;
+  // Walk cycle uses 9 keyframes per 1-sec loop, ROTATIONS ONLY.
+  // Hip vertical bob is NOT applied via position tracks (that's wrong for
+  // skeletal rigs — bone-translation breaks the rig hierarchy and produced
+  // a 1m+ vertical jump in the previous iteration because Mixamo bones'
+  // position units were misinterpreted). Instead the bob emerges naturally
+  // from supporting-leg knee bend during DOWN phases: knee bent → leg
+  // shortens → hip drops. This is the standard CG-animation approach.
+  const SWING_LEG = 32;
+  const ARM_DROP  = 75;    // 15° outward from straight-down to clear hips
+  // Foot bone-local Euler X (deg). LOCAL because the parent leg rotates
+  // significantly and we want the ankle hinge to follow it.
+  const FOOT_HEEL =  16;   // toes up (heel strike pose)
+  const FOOT_PUSH = -25;   // toes down (push off pose)
 
-  // 5-keyframe (4 + loop-closing repeat) cycle with explicit PASSING poses.
-  // Three.js interpolates linearly between adjacent keys, so without
-  // passing poses the t=0.25/0.75 moments collapse to the average of the
-  // extremes (≈0) and the limbs look frozen mid-cycle.
-  //   t=0.00  STRIDE A: L-leg fwd / R-leg back  (R-arm fwd / L-arm back)
-  //   t=0.25  PASSING:  legs near neutral, arms passing center
-  //   t=0.50  STRIDE B: R-leg fwd / L-leg back  (L-arm fwd / R-arm back)
-  //   t=0.75  PASSING:  legs near neutral (mirror of t=0.25)
-  //   t=1.00  loop back to t=0.00
+  // 9-keyframe cycle. Times at 1/8 spacing covers all 5 canonical walk
+  // poses (CONTACT, DOWN, PASSING, UP) plus loop close:
+  //   t=0    CONTACT-A : L heel-strike (just landed pose)
+  //   t=1/8  DOWN-A    : L supports + absorbs, R toe still down → HIP LOW
+  //   t=2/8  PASSING-A : L straight under body, R passes through → HIP HIGH
+  //   t=3/8  UP-A      : L push-off (heel raise), R extending fwd
+  //   t=4/8  CONTACT-B : R heel-strike (mirror of t=0)
+  //   t=5/8  DOWN-B    : R supports + absorbs → HIP LOW
+  //   t=6/8  PASSING-B : R straight, L passes through → HIP HIGH
+  //   t=7/8  UP-B      : R push-off
+  //   t=8/8  loop      = t=0
   //
   // Each pose entry = list of [wx, wy, wz, deg] WORLD-axis operations.
-  // Conv: ops[0] is applied LAST in world space (left-most in the
-  // mathematical multiplication chain).
+  // ops[0] is applied LAST in world space.
   const poses = {
-    // ── UPPER LEGS ── world +X swing (front/back of body)
+    // ── UPPER LEGS ── world +X swing
     upperLegL: [
-      [[1,0,0, +SWING_LEG]],     // t=0   stride A: fwd
-      [[1,0,0,  +5]],            // t=0.25 passing (slight fwd)
-      [[1,0,0, -SWING_LEG]],     // t=0.5 stride B: back
-      [[1,0,0,  -5]],            // t=0.75 passing (slight back)
+      [[1,0,0, +SWING_LEG]], // 0   CONTACT-A: L fwd
+      [[1,0,0, +22]],        // 1/8 DOWN-A
+      [[1,0,0,   0]],        // 2/8 PASSING-A: L vertical
+      [[1,0,0, -12]],        // 3/8 UP-A: L slight back, pushing off
+      [[1,0,0, -SWING_LEG]], // 4/8 CONTACT-B: L max back
+      [[1,0,0, -20]],        // 5/8 DOWN-B: L lifted, swinging fwd
+      [[1,0,0,   0]],        // 6/8 PASSING-B: L vertical mid-swing
+      [[1,0,0, +20]],        // 7/8 UP-B: L extending fwd for landing
       [[1,0,0, +SWING_LEG]],
     ],
     upperLegR: [
       [[1,0,0, -SWING_LEG]],
-      [[1,0,0,  -5]],
+      [[1,0,0, -20]],
+      [[1,0,0,   0]],
+      [[1,0,0, +20]],
       [[1,0,0, +SWING_LEG]],
-      [[1,0,0,  +5]],
+      [[1,0,0, +22]],
+      [[1,0,0,   0]],
+      [[1,0,0, -12]],
       [[1,0,0, -SWING_LEG]],
     ],
-    // ── KNEES ── bend on back-swing + slight bend during passing
+    // ── KNEES (lowerLeg) ──  The KEY to natural hip-bob:
+    //   SUPPORT-side knee:  ~22° bend at DOWN  → hip drops a few cm
+    //   SUPPORT-side knee:  straight at PASSING → hip rises
+    //   SWING-side knee:    big bend (~50°) for foot clearance during swing
+    // L supports during t=0 ... 4/8 ; swings during 4/8 ... 1
     lowerLegL: [
-      [[1,0,0,         0]],      // L-leg fwd, knee straight (front foot)
-      [[1,0,0, +KNEE_PASS]],     // passing: slight bend
-      [[1,0,0,     +KNEE]],      // L-leg back, knee bent (rear lifting)
-      [[1,0,0, +KNEE_PASS]],
-      [[1,0,0,         0]],
+      [[1,0,0,   0]],  // 0   straight at landing
+      [[1,0,0, +22]],  // 1/8 supporting, absorbing → HIP LOW
+      [[1,0,0,   0]],  // 2/8 supporting, straight   → HIP HIGH
+      [[1,0,0,   0]],  // 3/8 push off, still straight
+      [[1,0,0, +40]],  // 4/8 just lifted, knee bending
+      [[1,0,0, +52]],  // 5/8 max bend (foot clearance during swing)
+      [[1,0,0, +30]],  // 6/8 mid-swing fwd, knee partly extending
+      [[1,0,0,  +8]],  // 7/8 extending for landing
+      [[1,0,0,   0]],
     ],
     lowerLegR: [
-      [[1,0,0,     +KNEE]],
-      [[1,0,0, +KNEE_PASS]],
-      [[1,0,0,         0]],
-      [[1,0,0, +KNEE_PASS]],
-      [[1,0,0,     +KNEE]],
+      [[1,0,0, +40]],  // R swing during 0..4/8 (mirror)
+      [[1,0,0, +52]],
+      [[1,0,0, +30]],
+      [[1,0,0,  +8]],
+      [[1,0,0,   0]],  // R landed → supporting from here
+      [[1,0,0, +22]],  // R absorbing → HIP LOW
+      [[1,0,0,   0]],  // R supporting straight → HIP HIGH
+      [[1,0,0,   0]],
+      [[1,0,0, +40]],
     ],
-    // ── UPPER ARMS ── drop to side (world ±Z) + ±X swing (forward/back).
-    // Mixamo bind: avatar faces world -Z. LeftArm bone tip points world +X
-    // (character's left), RightArm tip points world -X. To drop +X → -Y:
-    // rotation around world +Z by -90°. To drop -X → -Y: around +Z by +90°.
-    // Arms swing COUNTER to legs (right arm forward when left leg forward).
+    // ── UPPER ARMS ── drop + counter-swing (L back when L-leg fwd)
     upperArmL: [
-      // ops list order = [last applied, ..., first applied]
-      // first apply drop (-ARM_DROP around +Z), then swing on top
-      [[1,0,0, -SWING_ARM],  [0,0,1, -ARM_DROP]],   // t=0   back swing
-      [[1,0,0,         0],   [0,0,1, -ARM_DROP]],   // t=0.25 passing
-      [[1,0,0, +SWING_ARM],  [0,0,1, -ARM_DROP]],   // t=0.5  fwd swing
-      [[1,0,0,         0],   [0,0,1, -ARM_DROP]],   // t=0.75 passing
-      [[1,0,0, -SWING_ARM],  [0,0,1, -ARM_DROP]],
+      [[1,0,0, -28], [0,0,1, -ARM_DROP]], // 0   back
+      [[1,0,0, -22], [0,0,1, -ARM_DROP]], // 1/8
+      [[1,0,0,   0], [0,0,1, -ARM_DROP]], // 2/8 passing
+      [[1,0,0, +14], [0,0,1, -ARM_DROP]], // 3/8 swinging fwd
+      [[1,0,0, +28], [0,0,1, -ARM_DROP]], // 4/8 fwd
+      [[1,0,0, +22], [0,0,1, -ARM_DROP]], // 5/8
+      [[1,0,0,   0], [0,0,1, -ARM_DROP]], // 6/8 passing
+      [[1,0,0, -14], [0,0,1, -ARM_DROP]], // 7/8 swinging back
+      [[1,0,0, -28], [0,0,1, -ARM_DROP]],
     ],
     upperArmR: [
-      [[1,0,0, +SWING_ARM],  [0,0,1, +ARM_DROP]],   // fwd swing
-      [[1,0,0,         0],   [0,0,1, +ARM_DROP]],
-      [[1,0,0, -SWING_ARM],  [0,0,1, +ARM_DROP]],
-      [[1,0,0,         0],   [0,0,1, +ARM_DROP]],
-      [[1,0,0, +SWING_ARM],  [0,0,1, +ARM_DROP]],
+      [[1,0,0, +28], [0,0,1, +ARM_DROP]],
+      [[1,0,0, +22], [0,0,1, +ARM_DROP]],
+      [[1,0,0,   0], [0,0,1, +ARM_DROP]],
+      [[1,0,0, -14], [0,0,1, +ARM_DROP]],
+      [[1,0,0, -28], [0,0,1, +ARM_DROP]],
+      [[1,0,0, -22], [0,0,1, +ARM_DROP]],
+      [[1,0,0,   0], [0,0,1, +ARM_DROP]],
+      [[1,0,0, +14], [0,0,1, +ARM_DROP]],
+      [[1,0,0, +28], [0,0,1, +ARM_DROP]],
     ],
-    // Slight elbow bend, constant — once arm is dropped the elbow flex
-    // axis aligns with world +X (the swing axis), so a small +X rotation
-    // here produces a relaxed bent-elbow look.
-    lowerArmL: [
-      [[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],
-    ],
-    lowerArmR: [
-      [[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],[[1,0,0,  25]],
-    ],
-    // Subtle head forward tilt (constant)
-    head: [
-      [[1,0,0,  4]],[[1,0,0,  4]],[[1,0,0,  4]],[[1,0,0,  4]],[[1,0,0,  4]],
-    ],
+    // Constant slight elbow bend (relaxed)
+    lowerArmL: Array(9).fill(0).map(()=>[[1,0,0, 25]]),
+    lowerArmR: Array(9).fill(0).map(()=>[[1,0,0, 25]]),
+    // Constant slight head forward tilt
+    head:      Array(9).fill(0).map(()=>[[1,0,0,  4]]),
   };
 
-  const times5 = [0, 0.25, 0.5, 0.75, 1.0].map(t => t * cycleSec);
+  const times5 = [0, 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 1].map(t => t * cycleSec);
   const tracks = [];
 
   // Reusable temporaries
@@ -6762,18 +6772,33 @@ function _makeWalkClip(bones, opts){
   }
 
   // ── Foot rotation tracks (bone-LOCAL Euler X) ───────────────────────────
-  // Foot rotation needs to follow the leg (parent), so we use a LOCAL Euler
-  // delta — NOT a world-axis projection. The X axis in the foot's local
-  // bind frame is the ankle hinge axis.
-  //
-  //   t=0    CONTACT-A: L-foot heel strike (toes up), R-foot push off (toes down)
-  //   t=0.25 PASSING-A: L-foot supporting (flat), R-foot mid-swing (toes up)
-  //   t=0.50 CONTACT-B: mirror of t=0
-  //   t=0.75 PASSING-B: mirror of t=0.25
-  //   t=1.00 loop
+  // 9-keyframe ankle-hinge timing matched to the limb cycle.
+  // Local Euler (rest × delta) so the foot follows the parent leg's rotation.
   const footPoses = {
-    footL: [FOOT_HEEL, FOOT_FLAT, FOOT_PUSH, FOOT_FLAT, FOOT_HEEL],
-    footR: [FOOT_PUSH, FOOT_FLAT, FOOT_HEEL, FOOT_FLAT, FOOT_PUSH],
+    // L-foot:  CONTACT-A heel (+) → flat → ... → push off (−) at CONTACT-B
+    footL: [
+      FOOT_HEEL,   // 0   CONTACT-A: L heel strike (toes up)
+       8,          // 1/8 DOWN-A: rolling to flat
+       0,          // 2/8 PASSING-A: flat
+     -10,          // 3/8 UP-A: heel raising, toes pressing
+      FOOT_PUSH,   // 4/8 CONTACT-B: push-off complete (toes down)
+      -8,          // 5/8 DOWN-B: lifted, foot returning to neutral
+       0,          // 6/8 PASSING-B: mid-swing flat
+      10,          // 7/8 UP-B: ankle dorsi-flex (toes up for landing)
+      FOOT_HEEL,   // loop
+    ],
+    // R-foot is the half-cycle mirror
+    footR: [
+      FOOT_PUSH,
+      -8,
+       0,
+      10,
+      FOOT_HEEL,
+       8,
+       0,
+     -10,
+      FOOT_PUSH,
+    ],
   };
   for(const [logical, degs] of Object.entries(footPoses)){
     const bone = bones[logical];
@@ -6793,30 +6818,7 @@ function _makeWalkClip(bones, opts){
       bone.name + '.quaternion', times5.slice(), values));
   }
 
-  // ── Hips vertical bob (position track, 2× cycle frequency) ──────────────
-  // Real walk cycles oscillate the body Y up to ~3% of leg length, twice
-  // per stride: LOW at "DOWN" phases (mid-step, both feet contacting),
-  // HIGH at "PASSING/UP" phases (one straight leg supporting). Without
-  // this oscillation the head/shoulder positions look frozen and the gait
-  // reads as a "floating mannequin", not a walking person.
-  //
-  // 9 keyframes, 1/8 cycle spacing — produces a triangle-wave Y curve.
-  const pelvisBone = bones.pelvis;
-  if(pelvisBone){
-    const rest = pelvisBone.position;
-    const times9 = [0, 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 1].map(t => t * cycleSec);
-    //                CONTACT-A  DOWN-A   PASSING-A DOWN-A'  CONTACT-B DOWN-B   PASSING-B DOWN-B'  loop
-    const dy = [        0,      -HIP_BOB, +HIP_BOB, -HIP_BOB,    0,    -HIP_BOB, +HIP_BOB, -HIP_BOB,   0];
-    const vals = new Float32Array(9 * 3);
-    for(let i=0;i<9;i++){
-      vals[i*3+0] = rest.x;
-      vals[i*3+1] = rest.y + dy[i] * amp;
-      vals[i*3+2] = rest.z;
-    }
-    tracks.push(new THREE.VectorKeyframeTrack(
-      pelvisBone.name + '.position', times9, vals));
-  }
-
+  // (No position tracks — hip bob comes from supporting-leg knee bend.)
   return new THREE.AnimationClip(name, cycleSec, tracks);
 }
 
