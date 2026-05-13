@@ -6618,113 +6618,79 @@ function _makeWalkClip(bones, opts){
   // (that's where the previous Euler hack broke) — each keyframe gets
   // BOTH the drop and the swing as separate world-axis rotations.
 
-  // Walk cycle uses 9 keyframes per 1-sec loop, ROTATIONS ONLY.
-  // Hip vertical bob is NOT applied via position tracks (that's wrong for
-  // skeletal rigs — bone-translation breaks the rig hierarchy and produced
-  // a 1m+ vertical jump in the previous iteration because Mixamo bones'
-  // position units were misinterpreted). Instead the bob emerges naturally
-  // from supporting-leg knee bend during DOWN phases: knee bent → leg
-  // shortens → hip drops. This is the standard CG-animation approach.
-  const SWING_LEG = 32;
-  const ARM_DROP  = 75;    // 15° outward from straight-down to clear hips
-  // Foot bone-local Euler X (deg). LOCAL because the parent leg rotates
-  // significantly and we want the ankle hinge to follow it.
-  const FOOT_HEEL =  16;   // toes up (heel strike pose)
-  const FOOT_PUSH = -25;   // toes down (push off pose)
+  // Walk cycle — 9 keyframes, ROTATIONS ONLY, each keyframe specified as
+  // a bone-LOCAL Euler triple [x_deg, y_deg, z_deg]. The keyframe quat is
+  // computed as rest_q × delta_q (delta in bone's bind-local frame) —
+  // identical to the path the procedural setBone() code uses, which was
+  // visually verified to produce correct walking on the Mixamo skeleton.
+  // Hip bob emerges automatically from supporting-leg knee bend (no
+  // position tracks — bone-position animation is forbidden on skeletons).
+  const SWING_LEG  = 32;   // ± deg, upper-leg X-axis swing
+  const ARM_DROP   = 75;   // deg, base arm drop from T-pose horizontal
+  const ARM_OUT    = -12;  // ± deg, arm Z-rotation = slight inward/outward at shoulder
+  const FOOT_HEEL  =  16;
+  const FOOT_PUSH  = -25;
 
-  // 9-keyframe cycle. Times at 1/8 spacing covers all 5 canonical walk
-  // poses (CONTACT, DOWN, PASSING, UP) plus loop close:
-  //   t=0    CONTACT-A : L heel-strike (just landed pose)
-  //   t=1/8  DOWN-A    : L supports + absorbs, R toe still down → HIP LOW
-  //   t=2/8  PASSING-A : L straight under body, R passes through → HIP HIGH
-  //   t=3/8  UP-A      : L push-off (heel raise), R extending fwd
-  //   t=4/8  CONTACT-B : R heel-strike (mirror of t=0)
-  //   t=5/8  DOWN-B    : R supports + absorbs → HIP LOW
-  //   t=6/8  PASSING-B : R straight, L passes through → HIP HIGH
-  //   t=7/8  UP-B      : R push-off
-  //   t=8/8  loop      = t=0
+  // 9-keyframe cycle. Each pose entry is a bone-LOCAL Euler triple
+  // [x_deg, y_deg, z_deg] applied as rest_q × eulerQuat. This matches the
+  // procedural setBone() path exactly — values are copied straight from
+  // the visually-verified procedural sine-wave logic.
   //
-  // Each pose entry = list of [wx, wy, wz, deg] WORLD-axis operations.
-  // ops[0] is applied LAST in world space.
+  //   t=0    CONTACT-A   t=4/8  CONTACT-B (mirror)
+  //   t=1/8  DOWN-A      t=5/8  DOWN-B
+  //   t=2/8  PASSING-A   t=6/8  PASSING-B
+  //   t=3/8  UP-A        t=7/8  UP-B
+  //   t=8/8  loop = t=0
+  const SL = SWING_LEG;
   const poses = {
-    // ── UPPER LEGS ── world +X swing
+    // ── UPPER LEGS ── X = forward/back swing
+    // procedural: setBone('upperLegL',  30*sin(2πt), 0, 0)
     upperLegL: [
-      [[1,0,0, +SWING_LEG]], // 0   CONTACT-A: L fwd
-      [[1,0,0, +22]],        // 1/8 DOWN-A
-      [[1,0,0,   0]],        // 2/8 PASSING-A: L vertical
-      [[1,0,0, -12]],        // 3/8 UP-A: L slight back, pushing off
-      [[1,0,0, -SWING_LEG]], // 4/8 CONTACT-B: L max back
-      [[1,0,0, -20]],        // 5/8 DOWN-B: L lifted, swinging fwd
-      [[1,0,0,   0]],        // 6/8 PASSING-B: L vertical mid-swing
-      [[1,0,0, +20]],        // 7/8 UP-B: L extending fwd for landing
-      [[1,0,0, +SWING_LEG]],
+      [+SL,0,0], [+22,0,0], [  0,0,0], [-12,0,0],
+      [-SL,0,0], [-20,0,0], [  0,0,0], [+20,0,0],
+      [+SL,0,0],
     ],
     upperLegR: [
-      [[1,0,0, -SWING_LEG]],
-      [[1,0,0, -20]],
-      [[1,0,0,   0]],
-      [[1,0,0, +20]],
-      [[1,0,0, +SWING_LEG]],
-      [[1,0,0, +22]],
-      [[1,0,0,   0]],
-      [[1,0,0, -12]],
-      [[1,0,0, -SWING_LEG]],
+      [-SL,0,0], [-20,0,0], [  0,0,0], [+20,0,0],
+      [+SL,0,0], [+22,0,0], [  0,0,0], [-12,0,0],
+      [-SL,0,0],
     ],
-    // ── KNEES (lowerLeg) ──  The KEY to natural hip-bob:
-    //   SUPPORT-side knee:  ~22° bend at DOWN  → hip drops a few cm
-    //   SUPPORT-side knee:  straight at PASSING → hip rises
-    //   SWING-side knee:    big bend (~50°) for foot clearance during swing
-    // L supports during t=0 ... 4/8 ; swings during 4/8 ... 1
+    // ── KNEES ── X = bend. Support-side bent at DOWN (drops hip);
+    //                       swing-side bent for foot clearance.
     lowerLegL: [
-      [[1,0,0,   0]],  // 0   straight at landing
-      [[1,0,0, +22]],  // 1/8 supporting, absorbing → HIP LOW
-      [[1,0,0,   0]],  // 2/8 supporting, straight   → HIP HIGH
-      [[1,0,0,   0]],  // 3/8 push off, still straight
-      [[1,0,0, +40]],  // 4/8 just lifted, knee bending
-      [[1,0,0, +52]],  // 5/8 max bend (foot clearance during swing)
-      [[1,0,0, +30]],  // 6/8 mid-swing fwd, knee partly extending
-      [[1,0,0,  +8]],  // 7/8 extending for landing
-      [[1,0,0,   0]],
+      [ 0,0,0], [+22,0,0], [ 0,0,0], [ 0,0,0],
+      [+40,0,0],[+52,0,0], [+30,0,0],[+8,0,0],
+      [ 0,0,0],
     ],
     lowerLegR: [
-      [[1,0,0, +40]],  // R swing during 0..4/8 (mirror)
-      [[1,0,0, +52]],
-      [[1,0,0, +30]],
-      [[1,0,0,  +8]],
-      [[1,0,0,   0]],  // R landed → supporting from here
-      [[1,0,0, +22]],  // R absorbing → HIP LOW
-      [[1,0,0,   0]],  // R supporting straight → HIP HIGH
-      [[1,0,0,   0]],
-      [[1,0,0, +40]],
+      [+40,0,0],[+52,0,0], [+30,0,0],[+8,0,0],
+      [ 0,0,0], [+22,0,0], [ 0,0,0], [ 0,0,0],
+      [+40,0,0],
     ],
-    // ── UPPER ARMS ── drop + counter-swing (L back when L-leg fwd)
+    // ── UPPER ARMS ── X = drop + swing combined (procedural verified);
+    //                   Z = slight inward tilt to keep arms close to body.
+    // procedural: setBone('upperArmL', 75 − 25*sin, 0, -12);
+    //             setBone('upperArmR', 75 + 25*sin, 0, +12);
+    // Sine schedule (L counter to L-leg): sw = sin(2π·t).
+    //  t=0    sw=0      → 75              t=4/8 sw=0      → 75
+    //  t=1/8  sw≈+0.71  → 75−18 = 57      t=5/8 sw≈-0.71  → 93
+    //  t=2/8  sw=+1     → 50              t=6/8 sw=-1     → 100
+    //  t=3/8  sw≈+0.71  → 57              t=7/8 sw≈-0.71  → 93
     upperArmL: [
-      [[1,0,0, -28], [0,0,1, -ARM_DROP]], // 0   back
-      [[1,0,0, -22], [0,0,1, -ARM_DROP]], // 1/8
-      [[1,0,0,   0], [0,0,1, -ARM_DROP]], // 2/8 passing
-      [[1,0,0, +14], [0,0,1, -ARM_DROP]], // 3/8 swinging fwd
-      [[1,0,0, +28], [0,0,1, -ARM_DROP]], // 4/8 fwd
-      [[1,0,0, +22], [0,0,1, -ARM_DROP]], // 5/8
-      [[1,0,0,   0], [0,0,1, -ARM_DROP]], // 6/8 passing
-      [[1,0,0, -14], [0,0,1, -ARM_DROP]], // 7/8 swinging back
-      [[1,0,0, -28], [0,0,1, -ARM_DROP]],
+      [75, 0, ARM_OUT], [55, 0, ARM_OUT], [50, 0, ARM_OUT], [55, 0, ARM_OUT],
+      [75, 0, ARM_OUT], [95, 0, ARM_OUT], [100,0, ARM_OUT], [95, 0, ARM_OUT],
+      [75, 0, ARM_OUT],
     ],
     upperArmR: [
-      [[1,0,0, +28], [0,0,1, +ARM_DROP]],
-      [[1,0,0, +22], [0,0,1, +ARM_DROP]],
-      [[1,0,0,   0], [0,0,1, +ARM_DROP]],
-      [[1,0,0, -14], [0,0,1, +ARM_DROP]],
-      [[1,0,0, -28], [0,0,1, +ARM_DROP]],
-      [[1,0,0, -22], [0,0,1, +ARM_DROP]],
-      [[1,0,0,   0], [0,0,1, +ARM_DROP]],
-      [[1,0,0, +14], [0,0,1, +ARM_DROP]],
-      [[1,0,0, +28], [0,0,1, +ARM_DROP]],
+      [75, 0, -ARM_OUT], [95, 0, -ARM_OUT], [100,0,-ARM_OUT], [95, 0,-ARM_OUT],
+      [75, 0, -ARM_OUT], [55, 0, -ARM_OUT], [50, 0, -ARM_OUT], [55, 0,-ARM_OUT],
+      [75, 0, -ARM_OUT],
     ],
-    // Constant slight elbow bend (relaxed)
-    lowerArmL: Array(9).fill(0).map(()=>[[1,0,0, 25]]),
-    lowerArmR: Array(9).fill(0).map(()=>[[1,0,0, 25]]),
-    // Constant slight head forward tilt
-    head:      Array(9).fill(0).map(()=>[[1,0,0,  4]]),
+    // ── FORE-ARMS ── small constant elbow bend
+    lowerArmL: Array(9).fill(0).map(()=>[12, 0, 0]),
+    lowerArmR: Array(9).fill(0).map(()=>[12, 0, 0]),
+    // ── HEAD ── small constant forward tilt
+    head:      Array(9).fill(0).map(()=>[ 5, 0, 0]),
   };
 
   const times5 = [0, 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 1].map(t => t * cycleSec);
@@ -6740,28 +6706,21 @@ function _makeWalkClip(bones, opts){
   const tmpEu   = new THREE.Euler();
   const tmpQ    = new THREE.Quaternion();
 
-  // ── World-axis rotation tracks (legs / arms / head) ────────────────────
-  for(const [logical, phases] of Object.entries(poses)){
+  // ── Rotation tracks (bone-LOCAL Euler XYZ × rest) ──────────────────────
+  // Each keyframe pose is [x_deg, y_deg, z_deg]. The bone's final local
+  // quaternion = rest_q × delta_q (delta from the Euler). This is the
+  // same convention the procedural setBone() code uses, which was
+  // visually verified on Mixamo bones.
+  for(const [logical, eulers] of Object.entries(poses)){
     const bone = bones[logical];
     if(!bone || !bone.userData._restQ) continue;
-    if(!bone.parent) continue;
-
-    bone.parent.updateMatrixWorld(true);
-    bone.parent.getWorldQuaternion(parentWQ);
-    parentWQI.copy(parentWQ).invert();
-
-    const values = new Float32Array(phases.length * 4);
-    for(let i = 0; i < phases.length; i++){
-      const ops = phases[i];
-      accumQ.identity();
-      for(let k = ops.length - 1; k >= 0; k--){
-        const [wx, wy, wz, deg] = ops[k];
-        axisV.set(wx, wy, wz);
-        axisV.applyQuaternion(parentWQI);
-        opQ.setFromAxisAngle(axisV.normalize(), deg * tD * amp);
-        accumQ.premultiply(opQ);
-      }
-      finalQ.copy(accumQ).multiply(bone.userData._restQ);
+    const values = new Float32Array(eulers.length * 4);
+    for(let i = 0; i < eulers.length; i++){
+      const [dx, dy, dz] = eulers[i];
+      tmpEu.set(dx * tD * amp, dy * tD * amp, dz * tD * amp, 'XYZ');
+      tmpQ.setFromEuler(tmpEu);
+      // bone_local = rest × delta  (delta in bind-local frame)
+      finalQ.copy(bone.userData._restQ).multiply(tmpQ);
       values[i*4+0] = finalQ.x;
       values[i*4+1] = finalQ.y;
       values[i*4+2] = finalQ.z;
