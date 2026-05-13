@@ -3,6 +3,7 @@
 3D Gaussian Splatting (3DGS) ビューワ。**単一の HTML ファイルで完結**する設計で、別途ビルド・サーバ不要。映像作品の事前ロケハン用に作られています。
 
 🌍 **公開デモ**: <https://locahun3d.nakamurakou1108.workers.dev>
+🎬 **サンプルシーン**: ページ上の「📥 デモシーンを読み込む」ボタンから、Cloudflare R2 にホストされたサンプル PLY を直接読み込めます(別 URL: [`?demo=1`](https://locahun3d.nakamurakou1108.workers.dev/?demo=1))。
 
 ## 主な機能
 

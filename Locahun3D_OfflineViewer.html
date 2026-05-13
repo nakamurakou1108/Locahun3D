@@ -11280,24 +11280,73 @@ function animate(now) {
 requestAnimationFrame(animate);
 
 // ══════════════════════════════════════════════════
-//  AUTO-LOAD via URL param  (?autoload=path/to/file.ply)
-//  Useful for direct-link deployment + automated testing. Harmless when not
-//  used. Fetches the URL, wraps as a File, feeds to loadSplatFile() so the
-//  load path is identical to the dropzone.
+//  DEMO SCENE  +  AUTO-LOAD via URL param
+//
+//  ?autoload=<URL>  — load any URL (used for testing / direct deploy)
+//  ?demo=1          — load the canonical demo scene from R2
+//
+//  A "📥 デモシーンを読み込む" button is also injected into the dropzone so
+//  visitors can try the viewer without preparing their own PLY.
 // ══════════════════════════════════════════════════
-(async ()=>{
-  const m = location.search.match(/[?&]autoload=([^&]+)/);
-  if(!m) return;
-  const url = decodeURIComponent(m[1]);
+
+// TODO: paste the actual R2 public URL here once the sample PLY is uploaded.
+// Set to null to hide the demo button entirely.
+const DEMO_SCENE_URL = null; // e.g. 'https://pub-xxxx.r2.dev/Kousaten_ForDemo_point_cloud.ply'
+const DEMO_SCENE_LABEL = 'デモシーン(Kousaten)';
+const DEMO_SCENE_SIZE_MB = 913;
+
+async function loadFromURL(url, displayName){
   try{
+    // Show loader UI early so user sees feedback during the ~30s fetch
+    if(typeof showLd === 'function') showLd(`読み込み中: ${displayName || url}`);
+    if(typeof setBar === 'function') setBar(5);
     const resp = await fetch(url);
     if(!resp.ok) throw new Error('HTTP '+resp.status);
+    if(typeof setBar === 'function') setBar(40);
     const buf = await resp.arrayBuffer();
-    const name = url.split('/').pop().split('?')[0] || 'autoload.ply';
+    const name = (displayName || url.split('/').pop().split('?')[0]) || 'autoload.ply';
     const file = new File([buf], name, {type:'application/octet-stream'});
     await loadSplatFile(file);
-  }catch(e){ console.warn('autoload failed', e); }
+  }catch(e){
+    console.warn('loadFromURL failed', e);
+    if(typeof hideLd === 'function') hideLd();
+    if(typeof showUndoToast === 'function') showUndoToast('読み込み失敗: ' + e.message);
+  }
+}
+
+// Handle URL params at startup
+(async ()=>{
+  const m  = location.search.match(/[?&]autoload=([^&]+)/);
+  const dm = /[?&]demo=1/.test(location.search);
+  if(m){
+    await loadFromURL(decodeURIComponent(m[1]));
+  } else if(dm && DEMO_SCENE_URL){
+    await loadFromURL(DEMO_SCENE_URL, DEMO_SCENE_LABEL);
+  }
 })();
+
+// Inject "Load demo scene" button into the dropzone. Inherits the existing
+// `.demo-btn` style and accent-colour treatment used by the other dropzone
+// buttons (空プロジェクト, ユーザーマニュアル, プロジェクトを開く).
+document.addEventListener('DOMContentLoaded', () => {
+  if(!DEMO_SCENE_URL) return;
+  const anchor = document.getElementById('emptyBtn'); // first existing dz button
+  if(!anchor) return;
+  const btn = document.createElement('button');
+  btn.id = 'dz-demo-btn';
+  btn.type = 'button';
+  btn.className = 'demo-btn';
+  btn.setAttribute('style',
+    'background:rgba(120,200,255,.16);border-color:rgba(120,200,255,.55);color:#b9e0ff;');
+  btn.innerHTML = `📥 <span>${DEMO_SCENE_LABEL} (${DEMO_SCENE_SIZE_MB}MB)</span>`;
+  btn.title = 'デモ用の 3DGS シーンを Cloudflare R2 から読み込みます';
+  btn.addEventListener('click', () => {
+    loadFromURL(DEMO_SCENE_URL, DEMO_SCENE_LABEL);
+  });
+  // Insert as the FIRST option (above 空プロジェクト) so it's the most
+  // discoverable entry point for new visitors.
+  anchor.parentNode.insertBefore(btn, anchor);
+}, { once: true });
 
 // ══════════════════════════════════════════════════
 //  DIAG MODE  (?diag=1) — opt-in diagnostic instrumentation
