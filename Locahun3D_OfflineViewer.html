@@ -5102,15 +5102,54 @@ window.captureCamShot = async function(){
   // Inject our camera-state JSON into a JPEG COM segment so the file can be
   // dropped back onto the Salvage zone later to restore camera position + settings.
   const blob = await embedDigirokeMetadata(blob0);
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
   // Filename = ショット名 (or 'shot' if blank). Repeats in the same session get
   // _v2, _v3 … suffixes so nothing overwrites silently.
-  a.href = url;
-  a.download = _nextCaptureFilename(cam.shot);
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url), 4000);
-  showUndoToast('📸 ' + a.download);
+  const fileName = _nextCaptureFilename(cam.shot);
+
+  // On iPad / iPhone / Android the classic `<a download>` route doesn't put
+  // the JPEG into Photos / Album — iOS Safari either previews the file or
+  // shoves it into the Files app's Downloads folder, which the user then
+  // has to manually move. The Web Share API with a File payload triggers
+  // iOS's share sheet (which includes "画像を保存" / "Save to Photos")
+  // and Android's equivalent. Detect touch devices and use share-first;
+  // fall back to download if `navigator.share` isn't available or the
+  // user cancels.
+  const _isTouchDevice = window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
+  const _shotFile = (typeof File !== 'undefined')
+    ? new File([blob], fileName, { type: 'image/jpeg' })
+    : null;
+  let _saved = false;
+  if(_isTouchDevice && _shotFile && navigator.share &&
+     navigator.canShare && navigator.canShare({ files: [_shotFile] })){
+    try {
+      await navigator.share({
+        files: [_shotFile],
+        title: 'ロケハン3D',
+        text: fileName,
+      });
+      _saved = true;
+      showUndoToast('📸 ' + fileName + ' — 共有メニューから「画像を保存」');
+    } catch(e){
+      // AbortError = user dismissed the share sheet without picking an
+      // action. Treat as "nothing happened" rather than falling back to
+      // download (which would surprise-save the file twice).
+      if(e && e.name === 'AbortError'){
+        _saved = true;
+        showUndoToast('📸 保存をキャンセルしました');
+      } else {
+        console.warn('[capture] navigator.share failed, falling back to download:', e);
+      }
+    }
+  }
+  if(!_saved){
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    showUndoToast('📸 ' + fileName);
+  }
 };
 
 // ── JPEG metadata embed/extract via COM segment (0xFFFE) ──
