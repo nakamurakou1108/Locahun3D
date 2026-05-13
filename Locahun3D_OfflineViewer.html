@@ -6552,8 +6552,7 @@ const walkMode = {
   // instead of the bone-by-bone sine-wave fallback used for the procedural
   // mannequin.
   mixer:null,            // THREE.AnimationMixer
-  walkAction:null,       // walking action (e.g. "WalkLoop")
-  runAction:null,        // running action (e.g. "WalkLoop.001") — null when only one clip is present
+  walkAction:null,       // primary locomotion action (walk / run)
   animSource:'none',     // 'mixer' | 'procedural' | 'none'
 };
 const _wmRay = new THREE.Raycaster();
@@ -6588,61 +6587,53 @@ async function _avatarBuild(){
     }
   }
   // ── Set up AnimationMixer if the loaded GLB has baked animation clips ──
-  // The Mixamo GLB (figures/jtoastie_walk.glb) can ship with two locomotion
-  // clips: "WalkLoop" (walking) and "WalkLoop.001" (running, named by
-  // Blender's auto-rename when duplicating an action). We bind BOTH and
-  // crossfade between them by the Shift key state. Mixamo bakes root motion
-  // into Hips translation; we strip it so WASD movement isn't double-applied.
+  // The Mixamo GLB (figures/jtoastie_walk.glb) ships with a "WalkLoop" clip
+  // alongside the standard "mixamo.com" rest/T-pose clip. Prefer WalkLoop;
+  // fall back to any non-empty clip. Mixamo locomotion clips bake root
+  // motion into the Hips translation, which would fight WASD-driven movement
+  // — strip Hips.position so only rotations animate.
   walkMode.mixer = null;
   walkMode.walkAction = null;
-  walkMode.runAction = null;
   walkMode.animSource = walkMode.bones ? 'procedural' : 'none';
   if(usedMixamo){
     try{
       const gltf = await _fetchMixamoGLB();
       const clips = (gltf && gltf.animations) || [];
       if(clips.length){
-        // Strip any Hips translation track from a clip so root motion can't
-        // fight the WASD locomotion controller. Match both `mixamorig:Hips`
-        // and the `_`-sanitised variant GLTFLoader sometimes emits.
-        const stripRoot = (clip) => {
-          const tracks = clip.tracks.filter(t=>{
-            if(!/\.position$/.test(t.name)) return true;
-            return !/(mixamorig[:_]?)?Hips\.position$/i.test(t.name);
-          });
-          return new THREE.AnimationClip(clip.name + ':noRoot', clip.duration, tracks);
+        // Pick the best clip: prefer one literally named WalkLoop / Walk / Run;
+        // skip "mixamo.com" which is just a generic upload marker (often a
+        // 1-frame T-pose).
+        const score = (c) => {
+          const n = (c.name||'').toLowerCase();
+          if(/^walk(loop)?$/i.test(c.name||'')) return 100;
+          if(n.includes('walk') || n.includes('run')) return 80;
+          if(n === 'mixamo.com') return 1;
+          return 10;
         };
-        // Match-by-name helpers (case-insensitive, accept "WalkLoop",
-        // "Walk", "Run", "RunLoop", and Blender's auto-suffixed ".001").
-        const find = (rx) => clips.find(c => rx.test(c.name||''));
-        const walkClipSrc =
-          find(/^walk(loop)?$/i)              ||  // "WalkLoop" / "Walk"
-          find(/walk/i)                        ||  // anything with walk
-          clips.find(c => !/^mixamo\.com/i.test(c.name||''));
-        const runClipSrc =
-          find(/^run(loop)?$/i)                ||  // "Run" / "RunLoop"
-          find(/^walkloop\.\d+$/i)              ||  // "WalkLoop.001" = Blender-cloned action
-          find(/run/i)                          ||  // anything with run
-          null;
+        const chosen = clips.slice().sort((a,b)=>score(b)-score(a))[0];
+        // Clone the clip and strip any Hips translation track to suppress
+        // baked root motion. Match both `mixamorig:Hips.position` and
+        // GLTFLoader's `mixamorig_Hips.position` sanitisation variants.
+        const filteredTracks = chosen.tracks.filter(t=>{
+          const m = /\.position$/.test(t.name);
+          if(!m) return true;
+          return !/(mixamorig[:_]?)?Hips\.position$/i.test(t.name);
+        });
+        const trimmed = new THREE.AnimationClip(
+          chosen.name + ':noRoot', chosen.duration, filteredTracks
+        );
         walkMode.mixer = new THREE.AnimationMixer(fig.root);
-        // Helper: create a paused, looping, full-weight-when-enabled action
-        const makeAction = (clip) => {
-          const a = walkMode.mixer.clipAction(stripRoot(clip));
-          a.setLoop(THREE.LoopRepeat, Infinity);
-          a.clampWhenFinished = false;
-          a.enabled = true;
-          a.setEffectiveWeight(0);
-          a.play();
-          return a;
-        };
-        walkMode.walkAction = walkClipSrc ? makeAction(walkClipSrc) : null;
-        // Only bind a separate run action if it's a DIFFERENT clip from walk
-        walkMode.runAction =
-          (runClipSrc && runClipSrc !== walkClipSrc) ? makeAction(runClipSrc) : null;
+        walkMode.walkAction = walkMode.mixer.clipAction(trimmed);
+        walkMode.walkAction.setLoop(THREE.LoopRepeat, Infinity);
+        walkMode.walkAction.clampWhenFinished = false;
+        walkMode.walkAction.enabled = true;
+        walkMode.walkAction.setEffectiveWeight(0); // start idle (no influence)
+        walkMode.walkAction.play();
         walkMode.animSource = 'mixer';
-        console.info('[avatar] AnimationMixer ready — ' +
-          'walk="' + (walkClipSrc?walkClipSrc.name:'(none)') + '" ' +
-          'run="'  + (runClipSrc &&runClipSrc!==walkClipSrc ?runClipSrc.name :'(uses walk @ 1.7×)') + '"');
+        console.info('[avatar] AnimationMixer ready — clip="' + chosen.name +
+                     '" duration=' + chosen.duration.toFixed(2) + 's' +
+                     ' tracks=' + filteredTracks.length + '/' + chosen.tracks.length +
+                     ' (Hips position stripped)');
       }
     } catch(e){ console.warn('[avatar] AnimationMixer setup failed', e); }
   }
@@ -6713,28 +6704,24 @@ function _avatarResetBones(){
 //   • An oscillating SWING component animates legs + arm counter-swing.
 // Run mode increases both frequency and amplitude.
 function _avatarUpdateAnimation(dt, walking, runMul){
-  // ── Mixer-driven path (GLB has baked locomotion clips) ──────────────────
-  // Two cases:
-  //   (a) walk + run clips present  → crossfade between them by Shift state
-  //   (b) walk clip only            → speed up walk clip by runMul as fallback
-  // In both cases, idle fades all locomotion actions toward weight 0 so the
-  // figure settles into its bind/rest pose rather than freezing mid-stride.
+  // ── Mixer-driven path (GLB has baked WalkLoop clip) ─────────────────────
+  // Crossfade weight 0↔1 by walking state and scale playback rate by run.
+  // Mixer is the single source of truth for bone rotations when this path
+  // is active; the procedural setBone fallback below is skipped.
   if(walkMode.mixer && walkMode.walkAction){
-    const w = walkMode.walkAction;
-    const r = walkMode.runAction;
-    const isRunning = walking && runMul > 1;
-    // Target weights: idle=(0,0), walk=(1,0), run=(0,1)  [walk-only: run≡0]
-    const tW = walking && !isRunning ? 1.0 : 0.0;
-    const tR = isRunning            ? 1.0 : 0.0;
-    const k  = Math.min(1, dt * 8);   // ~125 ms crossfade time-constant
-    w.setEffectiveWeight(w.getEffectiveWeight() + (tW - w.getEffectiveWeight()) * k);
-    if(r){
-      r.setEffectiveWeight(r.getEffectiveWeight() + (tR - r.getEffectiveWeight()) * k);
-    }
-    // Playback rate: walk clip always at 1×; run clip at 1×; if no run clip
-    // exists we speed the walk clip up while running so it READS as a run.
-    w.setEffectiveTimeScale(walking ? (r ? 1.0 : (isRunning ? Math.min(2.0, runMul * 0.85) : 1.0)) : 0);
-    if(r) r.setEffectiveTimeScale(walking ? 1.0 : 0);
+    const a = walkMode.walkAction;
+    // Target weight: 1.0 when walking/running, 0 when idle. Smoothly approach
+    // so stopping doesn't snap the figure to its bind pose mid-stride.
+    const targetW = walking ? 1.0 : 0.0;
+    const cur = a.getEffectiveWeight();
+    const k = Math.min(1, dt * 8);   // ~125 ms time constant
+    a.setEffectiveWeight(cur + (targetW - cur) * k);
+    // Tie animation playback rate to actual locomotion speed. The base clip
+    // is designed for "WalkLoop" speed; running uses runMul ≈ 2.2 so the
+    // clip speeds up proportionally. Mild dead-zone on idle so the clip
+    // doesn't run backwards or stall awkwardly when weight is 0.
+    const rate = walking ? (runMul > 1 ? Math.min(2.0, runMul * 0.85) : 1.0) : 0.0;
+    a.setEffectiveTimeScale(Math.max(rate, walking ? 0.2 : 0));
     walkMode.mixer.update(dt);
     return;
   }
