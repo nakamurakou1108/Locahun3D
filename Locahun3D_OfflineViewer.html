@@ -667,9 +667,12 @@ body{position:fixed;top:0;left:0;}
 #qi-badge .qib-lvl{color:#ffe4b3;font-weight:600;}
 #qi-badge .qib-fps{color:rgba(180,180,180,.65);
   font-variant-numeric:tabular-nums;min-width:42px;text-align:right;}
-/* Hide the badge on touch (the cbar still has env/measure/map; iPad users
-   don't typically tweak quality and the badge would crowd the topbar). */
-@media (pointer:coarse) and (any-hover:none){ #qi-badge{display:none;} }
+/* Touch-device badge sizing: keep visible on iPad / iPhone (FPS readout
+   was requested back). Slightly larger tap target so users can comfortably
+   tap to open the quality panel. */
+@media (pointer:coarse) and (any-hover:none){
+  #qi-badge{ padding:5px 11px; font-size:.74em; }
+}
 #quality-panel .qt{color:#C0C0C0;font-size:.85em;font-weight:600;margin-bottom:10px;}
 #quality-panel .qp-divider{
   border-top:1px solid rgba(255,255,255,.07);margin:10px 0 8px;
@@ -4290,11 +4293,16 @@ function _camFrameRect(){
   // (#layer-panel, scene-layer) and the RIGHT sidebar (#cam-panel, camera
   // tool). Each panel's right/left edge defines the usable viewport band;
   // when a panel is hidden (touch device, panel collapsed off-screen)
-  // its bound falls back to the viewport edge.
+  // OR collapsed to just its header (.collapsed class on #layer-panel),
+  // its bound falls back to the viewport edge so the grid expands to use
+  // the freed-up canvas area.
   const _panelBound = (el, side) => {
     if(!el) return (side === 'left') ? 0 : W;
     const cs = getComputedStyle(el);
     if(cs.display === 'none' || cs.visibility === 'hidden') return (side === 'left') ? 0 : W;
+    // Collapsed panels keep only their header strip visible; the camera
+    // composition frame should expand into the freed canvas band beside it.
+    if(el.classList && el.classList.contains('collapsed')) return (side === 'left') ? 0 : W;
     const r = el.getBoundingClientRect();
     if(r.width <= 0) return (side === 'left') ? 0 : W;
     return (side === 'left') ? r.right : r.left;
@@ -7457,8 +7465,10 @@ function _avatarWalkExit(){
 // `immersive-ar` is Android-Chrome-only; iOS Safari has no WebXR. So we
 // implement a manual passthrough: rear camera → fullscreen <video> behind
 // a transparent renderer canvas, with DeviceOrientation driving yaw/pitch.
-// User can still walk via the on-screen joystick. Touch look on canvas is
-// suppressed while AR is active (gyro takes over rotation).
+// User can still walk via the on-screen joystick AND drag-to-recenter
+// the view by touching the right-half of the canvas — the touch handler
+// (search "Touch look") detects AR mode and shifts arMode.baselineYaw /
+// baselinePitch so the gyro keeps tracking but with a user offset.
 const arMode = {
   active: false,
   video: null,
@@ -7467,6 +7477,8 @@ const arMode = {
   baseYaw: 0,            // camera yaw at AR-entry — preserved so the scene
                           // doesn't snap to compass-north when AR starts
   baselineYaw: 0,        // gyro-derived yaw at AR-entry (delta reference)
+  baselinePitch: 0,      // pitch baseline — touch drag shifts this so the
+                          // user can re-center the view while gyro is active
   baselineCaptured: false,
 };
 // Re-used scratch primitives so the 60 Hz orientation handler doesn't
@@ -7564,11 +7576,16 @@ async function _arEnter(){
     const pitchNew = Math.asin(Math.max(-1, Math.min(1, _arForwardScratch.y)));
     if(!arMode.baselineCaptured){
       arMode.baselineYaw = yawNew;
+      arMode.baselinePitch = pitchNew;
       arMode.baselineCaptured = true;
       return;
     }
+    // _yawTarget = device-yaw delta from baseline + entry-yaw offset
+    // _pitchTarget = device-pitch shifted by touch-adjustable pitch baseline
+    // Touch drag handlers nudge baselineYaw / baselinePitch so the user
+    // can recenter while the gyro keeps tracking.
     _yawTarget   = arMode.baseYaw + (yawNew - arMode.baselineYaw);
-    _pitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew));
+    _pitchTarget = Math.max(-1.55, Math.min(1.55, pitchNew - arMode.baselinePitch));
     markDirty(3);
   };
   window.addEventListener('deviceorientation', arMode.orientHandler, true);
@@ -8732,9 +8749,20 @@ function applyI18n(){
 }
 
 // ── Reset to home (soft nav, scene preserved) ──
+// Toggle behaviour: if the home dropzone is already visible AND there is
+// an active scene to return to, a second LOCAHUN 3D click should resume
+// editing instead of doing nothing. This mirrors the "Continue Editing"
+// dropzone button without forcing the user to scroll down to find it.
 window.resetToHome = function(){
-  clearTimeout(_hideDzTimer); _hideDzTimer=null; // cancel any pending hide
   const dz=document.getElementById('dz');
+  if(!dz) return;
+  const dzVisible = dz.style.display !== 'none' && !dz.classList.contains('fade');
+  if(dzVisible && layers.length > 0){
+    // Already on home with a scene loaded → toggle back to editing.
+    continueEditing();
+    return;
+  }
+  clearTimeout(_hideDzTimer); _hideDzTimer=null; // cancel any pending hide
   dz.style.display='flex'; // explicitly restore flex, not just ''
   dz.style.opacity='1';
   dz.classList.remove('fade');
@@ -9013,6 +9041,13 @@ window.toggleLayerPanelCollapse = function(e){
   if(!panel) return;
   panel.classList.toggle('collapsed');
   if(typeof _updateLpWidthVar === 'function') _updateLpWidthVar();
+  // The camera composition frame uses the layer panel's right edge as its
+  // left bound — when the panel collapses to just its header, the frame
+  // should expand into the freed canvas band. Re-layout if in camera mode.
+  if(typeof cam !== 'undefined' && cam && cam.active){
+    if(typeof layoutCamFrame === 'function') layoutCamFrame();
+    if(typeof drawCamGrid    === 'function') drawCamGrid();
+  }
 };
 
 function renderLayerList(){
@@ -14527,8 +14562,22 @@ canvas.addEventListener('touchstart',e=>{
 canvas.addEventListener('touchmove',e=>{
   for(const t of e.changedTouches)
     if(t.identifier===tlId){
-      _yawTarget   -= (t.clientX - tlX) * 0.004;
-      _pitchTarget  = Math.max(-1.55, Math.min(1.55, _pitchTarget - (t.clientY - tlY) * 0.004));
+      const dx = (t.clientX - tlX) * 0.004;
+      const dy = (t.clientY - tlY) * 0.004;
+      // AR mode: the gyro handler continuously re-asserts _yawTarget /
+      // _pitchTarget on every deviceorientation event (~60 Hz), so writing
+      // directly to those targets here would be erased instantly. Instead
+      // we shift the AR baselines by the same amount — the gyro formula
+      // (`baseYaw + (yawNew - baselineYaw)`) then carries the touch
+      // adjustment forward as a persistent offset on top of live device
+      // orientation, exactly the way "drag-to-recenter" should feel.
+      if(typeof arMode !== 'undefined' && arMode && arMode.active && arMode.baselineCaptured){
+        arMode.baselineYaw   += dx;
+        arMode.baselinePitch += dy;
+      } else {
+        _yawTarget   -= dx;
+        _pitchTarget  = Math.max(-1.55, Math.min(1.55, _pitchTarget - dy));
+      }
       tlX=t.clientX;tlY=t.clientY;
       markDirty(3);
       if(layers.some(L=>L.type==='splat')) bumpSplatActive(1500);
