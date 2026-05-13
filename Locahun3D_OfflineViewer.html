@@ -2928,6 +2928,16 @@ const _isRetinaClass = (window.devicePixelRatio || 1) >= 1.75;
 // >300 MB files) to a device that doesn't need them. UA check is
 // reliable: iPad NEVER includes "iPhone"/"iPod" in its UA string.
 const _isIPhoneOrIPod = /iPhone|iPod/.test(_ua);
+// iPad detection. iPadOS 13+ identifies as MacIntel with maxTouchPoints
+// > 1, so a UA-only regex misses it. Combine the UA check with the
+// "Mac" + multi-touch fallback. Used so we can branch behaviour
+// distinct from desktop AND from iPhone:
+//   • iPad has enough tab memory to load big PLY at full quality, so
+//     we skip the localStorage seed + the stride-4 runtime escalation
+//     and instead just show an explanatory popup the first time the
+//     user opens a heavy file.
+const _isIPad = /iPad/.test(_ua) ||
+                (_platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
 
 // ── GPU capability detection ──
 // Probes WebGL for the underlying GPU string and classifies into:
@@ -6586,6 +6596,63 @@ document.addEventListener('DOMContentLoaded', () => {
 //   • Guidance line pointing the user to the FPS badge (right-top) as
 //     the permanent place this setting lives
 // Auto-fades after 12 s so it doesn't linger if ignored.
+
+// iPad-specific popup shown after loading a > 300 MB scene. iPad has
+// enough memory to handle big files at full quality, so unlike iPhone
+// we DON'T auto-decimate. But the user might find the scene heavy, so
+// the popup tells them where to reduce polygons if needed — namely the
+// 🎚 ポリゴン半減 toggle behind the top-right FPS badge.
+window.showIPadLargeFileHint = function(mb){
+  const old = document.getElementById('ipad-largefile-hint');
+  if(old) old.remove();
+  const card = document.createElement('div');
+  card.id = 'ipad-largefile-hint';
+  card.style.cssText =
+    'position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:160;' +
+    'background:rgba(20,20,22,.97);border:1px solid rgba(120,200,255,.55);' +
+    'border-radius:12px;padding:14px 16px;max-width:420px;' +
+    'box-shadow:0 8px 24px rgba(0,0,0,.6);' +
+    'color:#cfe8ff;font-size:.86em;line-height:1.5;letter-spacing:.02em;' +
+    'font-family:inherit;pointer-events:auto;' +
+    'transition:opacity .35s ease;';
+  const lang = (window._lang === 'en') ? 'en' : 'ja';
+  const title  = (lang === 'en')
+    ? '📦 Loaded at full quality (' + (mb||0) + ' MB)'
+    : '📦 フル品質で読み込みました(' + (mb||0) + ' MB)';
+  const body   = (lang === 'en')
+    ? 'If the scene feels heavy, you can halve the splat count later from the top-right FPS badge → "Halve splats".'
+    : '動作が重い場合は、右上の FPS バッジ → 「ポリゴン半減」から後でスプラット数を半減できます。';
+  const ok     = (lang === 'en') ? 'Got it' : 'OK';
+  card.innerHTML =
+    '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">' +
+      '<div style="flex:1;font-weight:600;color:#e6f4ff;">' + title + '</div>' +
+      '<button id="iplh-x" aria-label="dismiss" ' +
+        'style="background:transparent;border:none;color:rgba(207,232,255,.7);' +
+        'font-size:1.15em;line-height:1;cursor:pointer;padding:2px 4px;' +
+        'border-radius:4px;margin:-2px -4px 0 0;">✕</button>' +
+    '</div>' +
+    '<div style="font-size:.95em;color:rgba(207,232,255,.85);">' + body + '</div>' +
+    '<div style="display:flex;justify-content:flex-end;margin-top:10px;">' +
+      '<button id="iplh-ok" style="' +
+        'background:rgba(120,200,255,.16);border:1px solid rgba(120,200,255,.5);' +
+        'color:#cbe8ff;border-radius:6px;padding:5px 16px;font-size:.95em;' +
+        'cursor:pointer;font-weight:600;letter-spacing:.04em;">' + ok + '</button>' +
+    '</div>';
+  document.body.appendChild(card);
+  const dismiss = ()=>{
+    card.style.opacity = '0';
+    setTimeout(()=>{ if(card.parentNode) card.remove(); }, 400);
+  };
+  const xBtn  = card.querySelector('#iplh-x');
+  const okBtn = card.querySelector('#iplh-ok');
+  if(xBtn)  xBtn.addEventListener('click',  dismiss);
+  if(okBtn) okBtn.addEventListener('click', dismiss);
+  // Auto-dismiss after 15 s — slightly longer than the smartphone hint
+  // because the text is denser and the user has to find a button to
+  // tap. Hand-dismiss still works at any point.
+  setTimeout(dismiss, 15000);
+};
+
 window.showLowPolyHint = function(){
   const old = document.getElementById('lowpoly-hint');
   if(old) old.remove();
@@ -6876,27 +6943,43 @@ async function loadSplatFile(file){
         showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
       }
     }
-    // > 300 MB PLY / SPLAT on ANY device: SEED ポリゴン半減 to ON in
-    // localStorage when the user hasn't expressed a preference yet.
-    // Why all devices, not just iPhone: even on iPad / desktop a 400 MB+
-    // scan triples to ~1.2 GB during parse + Spark build; iPhone is the
-    // most likely to crash, but desktop browsers also tank loading
-    // times. Letting the user opt-out (toggle OFF after seeing the
-    // panel checkbox flip ON) is friendlier than silently halving.
-    // Once seeded, the preference persists across loads.
+    // Big-file behaviour split by device:
+    //   • iPhone / desktop, > 300 MB : seed localStorage = '2' so the
+    //       polygon-halve toggle visibly flips ON for future loads
+    //       (and iPhone additionally escalates this load to stride 4
+    //       inside maybeDecimateSplatBuffer to fit memory).
+    //   • iPad,            > 300 MB : load at FULL quality, then show
+    //       an explanatory popup telling the user they can halve from
+    //       the top-right FPS badge if the scene feels heavy. iPads
+    //       have plenty of memory; pre-halving sacrificed visible
+    //       fidelity without need.
     if((ext === 'ply' || ext === 'splat') && file && file.size > 300*1024*1024){
-      try {
-        if(localStorage.getItem('locahun_splat_stride') == null){
-          localStorage.setItem('locahun_splat_stride', '2');
-          const cb = document.getElementById('lowpoly-toggle');
-          if(cb) cb.checked = true;
-          const hintCb = document.getElementById('lph-cb');
-          if(hintCb) hintCb.checked = true;
-          if(typeof showUndoToast === 'function'){
-            showUndoToast('🎚 大きいファイルのため「ポリゴン半減」を ON にしました');
+      if(typeof _isIPad !== 'undefined' && _isIPad){
+        // iPad: full-quality load + explanatory popup (session-once).
+        try {
+          if(!sessionStorage.getItem('locahun_ipad_largefile_hint_shown')){
+            sessionStorage.setItem('locahun_ipad_largefile_hint_shown', '1');
+            if(typeof showIPadLargeFileHint === 'function'){
+              const mb = Math.round(file.size / 1024 / 1024);
+              showIPadLargeFileHint(mb);
+            }
           }
-        }
-      } catch(_){}
+        } catch(_){}
+      } else {
+        // iPhone + desktop: seed the polygon-halve preference ON.
+        try {
+          if(localStorage.getItem('locahun_splat_stride') == null){
+            localStorage.setItem('locahun_splat_stride', '2');
+            const cb = document.getElementById('lowpoly-toggle');
+            if(cb) cb.checked = true;
+            const hintCb = document.getElementById('lph-cb');
+            if(hintCb) hintCb.checked = true;
+            if(typeof showUndoToast === 'function'){
+              showUndoToast('🎚 大きいファイルのため「ポリゴン半減」を ON にしました');
+            }
+          }
+        } catch(_){}
+      }
     }
 
     // ── 常にバッファを読み込む（ZIP保存キャッシュ兼用）──
