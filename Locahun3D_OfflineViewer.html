@@ -6464,12 +6464,15 @@ document.addEventListener('DOMContentLoaded', () => {
 }, { once:true });
 
 // Touch-device perf hint shown once per session after the first scene
-// loads. Floating card at bottom-left, above the joystick. Tapping the
-// "ON" button flips the toggle and reloads layers; the ✕ button just
-// dismisses. Auto-fades after 12 s so it doesn't linger.
+// loads. Floating card at bottom-left, above the joystick. Contains:
+//   • Notification text ("動作が重い場合 ポリゴン半減を ON")
+//   • Inline checkbox the user can toggle directly (live-bound to the
+//     same setLowPolyMode flow that the quality panel uses)
+//   • ✕ button at top-right to dismiss the card
+//   • Guidance line pointing the user to the FPS badge (right-top) as
+//     the permanent place this setting lives
+// Auto-fades after 12 s so it doesn't linger if ignored.
 window.showLowPolyHint = function(){
-  // Skip if already on (no point suggesting what's already enabled).
-  if(_splatStride() >= 2) return;
   const old = document.getElementById('lowpoly-hint');
   if(old) old.remove();
   const card = document.createElement('div');
@@ -6477,41 +6480,62 @@ window.showLowPolyHint = function(){
   card.style.cssText =
     'position:fixed;left:18px;bottom:230px;z-index:140;' +
     'background:rgba(20,20,22,.96);border:1px solid rgba(255,180,84,.55);' +
-    'border-radius:10px;padding:11px 13px;max-width:260px;' +
+    'border-radius:10px;padding:11px 14px 12px;max-width:280px;' +
     'box-shadow:0 6px 18px rgba(0,0,0,.55);' +
     'color:#ffe4b3;font-size:.8em;line-height:1.45;letter-spacing:.02em;' +
     'font-family:inherit;pointer-events:auto;' +
     'transition:opacity .35s ease;';
   const lang = (window._lang === 'en') ? 'en' : 'ja';
-  const txt = (lang === 'en')
-    ? 'If performance is heavy, turn ON "Halve splats" in the quality panel.'
+  const title  = (lang === 'en')
+    ? 'If performance is heavy, turn ON "Halve splats".'
     : '動作が重い場合は「ポリゴン半減」を ON';
-  const btnTxt    = (lang === 'en') ? 'Turn ON' : 'ON にする';
-  const dismissTxt = (lang === 'en') ? 'Dismiss' : '閉じる';
+  const cbLbl  = (lang === 'en') ? 'Halve splats' : 'ポリゴン半減';
+  const hint   = (lang === 'en')
+    ? 'You can also toggle this from the top-right FPS badge later.'
+    : 'この設定は右上の FPS 表示ボタンからも切り替えられます';
+  const dismissLbl = (lang === 'en') ? 'Dismiss' : '閉じる';
+  const checked = (_splatStride() >= 2) ? 'checked' : '';
   card.innerHTML =
-    '<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:8px;">' +
-      '<div style="flex:1">⚡ ' + txt + '</div>' +
-      '<button id="lph-x" aria-label="' + dismissTxt + '" ' +
-        'style="background:transparent;border:none;color:rgba(255,228,179,.6);' +
-        'font-size:1.1em;line-height:1;cursor:pointer;padding:0 2px;">✕</button>' +
+    // Header row: title + ✕ button
+    '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">' +
+      '<div style="flex:1;font-weight:600;">⚡ ' + title + '</div>' +
+      '<button id="lph-x" aria-label="' + dismissLbl + '" ' +
+        'style="background:transparent;border:none;color:rgba(255,228,179,.7);' +
+        'font-size:1.15em;line-height:1;cursor:pointer;padding:2px 4px;' +
+        'border-radius:4px;margin:-2px -4px 0 0;">✕</button>' +
     '</div>' +
-    '<button id="lph-on" style="' +
-      'background:rgba(255,180,84,.18);border:1px solid rgba(255,180,84,.55);' +
-      'color:#ffe4b3;border-radius:6px;padding:5px 14px;font-size:.92em;' +
-      'cursor:pointer;font-weight:600;letter-spacing:.04em;">🎚 ' + btnTxt + '</button>';
+    // Inline checkbox row — live-bound to setLowPolyMode
+    '<label style="display:flex;align-items:center;gap:7px;cursor:pointer;' +
+      'padding:5px 8px;margin:2px 0 8px -2px;border-radius:6px;' +
+      'background:rgba(255,180,84,.10);border:1px solid rgba(255,180,84,.35);' +
+      'user-select:none;">' +
+      '<input type="checkbox" id="lph-cb" ' + checked + ' ' +
+        'style="accent-color:#ffb454;cursor:pointer;width:16px;height:16px;">' +
+      '<span style="font-size:.95em;color:#ffe4b3;">🎚 ' + cbLbl + '</span>' +
+    '</label>' +
+    // Guidance line — small, faded, points the user at the FPS badge
+    '<div style="font-size:.78em;color:rgba(255,228,179,.65);line-height:1.4;' +
+      'padding-top:2px;border-top:1px dashed rgba(255,180,84,.25);">' +
+      '💡 ' + hint +
+    '</div>';
   document.body.appendChild(card);
   const dismiss = ()=>{
     card.style.opacity = '0';
     setTimeout(()=>{ if(card.parentNode) card.remove(); }, 400);
   };
-  const onBtn = card.querySelector('#lph-on');
-  const xBtn  = card.querySelector('#lph-x');
-  if(onBtn) onBtn.addEventListener('click', ()=>{
-    try { window.setLowPolyMode(true); } catch(_){}
-    dismiss();
-  });
+  const xBtn = card.querySelector('#lph-x');
+  const cb   = card.querySelector('#lph-cb');
   if(xBtn) xBtn.addEventListener('click', dismiss);
-  // Auto-dismiss after 12 s so it doesn't sit forever.
+  if(cb){
+    cb.addEventListener('change', ()=>{
+      try { window.setLowPolyMode(!!cb.checked); } catch(_){}
+      // Keep the quality-panel checkbox visually in sync (setLowPolyMode
+      // already does this, but we re-confirm in case localStorage threw).
+      const panelCb = document.getElementById('lowpoly-toggle');
+      if(panelCb) panelCb.checked = !!cb.checked;
+    });
+  }
+  // Auto-dismiss after 12 s if user doesn't interact.
   setTimeout(dismiss, 12000);
 };
 
