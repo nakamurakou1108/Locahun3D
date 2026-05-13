@@ -6270,25 +6270,114 @@ function maybeDecimateSplatBuffer(rawBuf, ext){
   return rawBuf;
 }
 
+// Re-decimate every currently-loaded splat layer and rebuild its SplatMesh
+// with the latest stride applied. Used by the "ポリゴン半減" toggle so the
+// change takes effect immediately rather than waiting for the user to
+// reopen the file manually. Walks each layer's cached _rawBuffer through
+// maybeDecimateSplatBuffer(), builds a fresh SplatMesh, preserves the
+// existing transform (position / quaternion / scale / visibility) so the
+// scene composition stays put, then swaps the old mesh out.
+async function reloadAllSplatLayers(){
+  const splatLayers = (typeof layers !== 'undefined' && layers)
+    ? layers.filter(L => L && L.type === 'splat' && L._rawBuffer)
+    : [];
+  if(splatLayers.length === 0) return false;
+  try {
+    showLd(T('loading') || '読み込み中…');
+    setBar(8);
+    setMsg(T('building-3dgs') || '3DGS 再構築中…');
+    for(let i = 0; i < splatLayers.length; i++){
+      const L = splatLayers[i];
+      const pct = 10 + (i / splatLayers.length) * 80;
+      setBar(pct);
+      // Determine extension. Prefer the cached _rawExt set by the loaders;
+      // fall back to the layer name (stripped of trailing version suffix).
+      let ext = (L._rawExt || '').toLowerCase();
+      if(!ext){
+        const name = L.name || '';
+        ext = (name.split('.').pop() || 'ply').toLowerCase();
+      }
+      const newBytes = maybeDecimateSplatBuffer(L._rawBuffer, ext);
+      const opts = {
+        fileBytes: newBytes,
+        fileName: (L.name || 'scene') + '.' + ext,
+        ...SPARK_QUALITY_OPTS,
+      };
+      if(ext === 'splat')       opts.fileType = SplatFileType.SPLAT;
+      else if(ext === 'ksplat') opts.fileType = SplatFileType.KSPLAT;
+      else if(ext === 'ply')    opts.fileType = SplatFileType.PLY;
+      else if(ext === 'spz')    opts.fileType = SplatFileType.SPZ;
+      let newMesh;
+      try {
+        newMesh = new SplatMesh(opts);
+      } catch(e){
+        console.warn('[reload-splat] SplatMesh build failed for layer', L.name, e);
+        continue;
+      }
+      tuneSplatMesh(newMesh);
+      // Preserve the existing world transform exactly so the camera doesn't
+      // jump and the user's framing stays. Copying the live transform also
+      // means we don't have to re-derive flip × userRot from L.flip flags.
+      try {
+        const oldMesh = L.mesh;
+        if(oldMesh){
+          newMesh.position.copy(oldMesh.position);
+          newMesh.quaternion.copy(oldMesh.quaternion);
+          newMesh.scale.copy(oldMesh.scale);
+          newMesh.visible = oldMesh.visible;
+          if(oldMesh.userData){
+            newMesh.userData = Object.assign(newMesh.userData || {}, oldMesh.userData);
+          }
+          scene.remove(oldMesh);
+        }
+      } catch(_){}
+      L.mesh = newMesh;
+      scene.add(newMesh);
+      // If this was the primary splat reference, update it too so other
+      // code paths (snapshot, project save) keep pointing at the live mesh.
+      if(typeof splatMesh !== 'undefined' && L._isMain){
+        try { splatMesh = newMesh; } catch(_){}
+      }
+    }
+    setBar(100);
+    setMsg(T('done') || '完了');
+    await sleep(150);
+    hideLd();
+    // Bump Spark's active-sort window so the freshly-built meshes finish
+    // their first sort without the user having to nudge the camera.
+    _splatActiveUntil = performance.now() + 4000;
+    markDirty(12);
+    return true;
+  } catch(e){
+    console.error('[reload-splat] failed:', e);
+    try { hideLd(); } catch(_){}
+    return false;
+  }
+}
+
 // User-facing toggle: stride 2 (halve) on, stride 1 (full) off. Persisted
-// to localStorage so the choice survives reload. The toggle itself doesn't
-// re-decimate currently-loaded splats — Spark 2.0.0 has no live API for
-// that — so a toast asks the user to reopen the file. Project-ZIP reload
-// will pick up the new stride automatically since cached _rawBuffer is
-// re-fed through maybeDecimateSplatBuffer() on restore.
+// to localStorage so the choice survives reload. Per user request, the
+// toggle now AUTO-RELOADS every loaded splat layer so the change is
+// visible immediately (Spark 2.0.0 has no live count knob, so a rebuild
+// is the only option). Project-ZIP reload also picks up the new stride.
 window.setLowPolyMode = function(on){
   try {
     localStorage.setItem('locahun_splat_stride', on ? '2' : '1');
   } catch(_){}
   const cb = document.getElementById('lowpoly-toggle');
   if(cb && cb.checked !== !!on) cb.checked = !!on;
-  // Inform the user — fairness about what they're getting.
+  // Toast first so the user sees the intent while the reload spinner runs.
   if(typeof showUndoToast === 'function'){
     if(on){
-      showUndoToast(T('lowpoly-on') || '🎚 ポリゴン半減 ON — シーンを再読み込みすると反映されます');
+      showUndoToast(T('lowpoly-on') || '🎚 ポリゴン半減を適用中…');
     } else {
-      showUndoToast(T('lowpoly-off') || '🎚 ポリゴン半減 OFF — シーンを再読み込みすると反映されます');
+      showUndoToast(T('lowpoly-off') || '🎚 ポリゴン半減を解除中…');
     }
+  }
+  // Auto-reload every loaded splat layer with the new stride. No-op if no
+  // splats are loaded yet (e.g. the user toggled before opening a file).
+  if(typeof reloadAllSplatLayers === 'function'){
+    reloadAllSplatLayers().catch(e => console.warn('[reload-splat]', e));
   }
 };
 // Initialize the toggle checkbox to match the persisted state on first
@@ -9148,10 +9237,10 @@ const I18N = {
   'qt-ultra':'最高',
   'qp-perf-t':'📊 処理能力モニター',
   'qp-lbl-lowpoly-main':'ポリゴン半減',
-  'qp-lbl-lowpoly-hint':'PLY/SPLAT のみ・要再読み込み',
+  'qp-lbl-lowpoly-hint':'PLY/SPLAT のみ・自動で再読み込み',
   'qp-lbl-lowpoly-on':'ON',
-  'lowpoly-on':'🎚 ポリゴン半減 ON — シーンを再読み込みすると反映されます',
-  'lowpoly-off':'🎚 ポリゴン半減 OFF — シーンを再読み込みすると反映されます',
+  'lowpoly-on':'🎚 ポリゴン半減を適用中…',
+  'lowpoly-off':'🎚 ポリゴン半減を解除中…',
   'qp-l-frame':'フレーム時間',
   'qp-l-gpu':'GPU 負荷',
   'qp-l-head':'余剰 (ヘッドルーム)',
@@ -9259,10 +9348,10 @@ const I18N = {
   'qt-ultra':'Ultra',
   'qp-perf-t':'📊 Performance Monitor',
   'qp-lbl-lowpoly-main':'Halve splats',
-  'qp-lbl-lowpoly-hint':'PLY/SPLAT only — reload to apply',
+  'qp-lbl-lowpoly-hint':'PLY/SPLAT only — auto reload',
   'qp-lbl-lowpoly-on':'ON',
-  'lowpoly-on':'🎚 Halve splats ON — reload the scene to apply',
-  'lowpoly-off':'🎚 Halve splats OFF — reload the scene to apply',
+  'lowpoly-on':'🎚 Halving splats…',
+  'lowpoly-off':'🎚 Restoring full splat count…',
   'qp-l-frame':'Frame Time',
   'qp-l-gpu':'GPU Load',
   'qp-l-head':'Headroom',
