@@ -3378,11 +3378,15 @@ window.onEnvIntInput = function(v){
 };
 
 window.toggleEnvPanel = function(){
-  env.panelOpen = !env.panelOpen;
+  const wasOpen = env.panelOpen;
+  // Mutual-exclusion: opening any of 測定 / カメラ / 環境 / マップ /
+  // 画質 closes the other four. Closing this panel doesn't reopen them.
+  if(!wasOpen) closeAllPanels();
+  env.panelOpen = !wasOpen;
   const pan = document.getElementById('env-panel');
   const btn = document.getElementById('btn-env');
-  pan.style.display = env.panelOpen ? 'block' : 'none';
-  btn.classList.toggle('on', env.panelOpen);
+  if(pan) pan.style.display = env.panelOpen ? 'block' : 'none';
+  if(btn) btn.classList.toggle('on', env.panelOpen);
 };
 // Apply the default ☀ 昼 preset at startup so the dome + scene tint are
 // active on first load (the env object's `preset:'day'` default would
@@ -4227,19 +4231,57 @@ function commitPreview() {
 
 // ── Panel exclusivity helper ──
 function closeAllPanels(){
-  // Close quality panel
+  // Quality panel + FPS readout
   _qualPanelOpen=false;
   document.getElementById('quality-panel').style.display='none';
   if(_perfInterval){ clearInterval(_perfInterval); _perfInterval=null; }
-  // Close settings panel
+  // Legacy settings panel
   qOpen=false;
-  // Legacy 設定 panel + btnQ were removed; their settings live in the
-  // consolidated quality-panel now. Guard the lookups in case external
-  // code reaches closeAllPanels before the DOM finishes parsing.
   const _qp = document.getElementById('qpanel'); if(_qp) _qp.classList.remove('show');
   const _bq = document.getElementById('btnQ');   if(_bq) _bq.classList.remove('on');
-  // Close measure
+  // Measure
   if(msr.active) _closeMeasureOnly();
+  // Camera tool — calling toggleCamTool() while cam.active is true closes
+  // the panel + HUD + restores fov; we replicate the minimum without
+  // re-entering toggleCamTool to avoid an infinite mutual-close loop.
+  if(typeof cam !== 'undefined' && cam && cam.active){
+    cam.active = false;
+    const _cbtn = document.getElementById('btnCamTool');
+    if(_cbtn) _cbtn.classList.remove('on');
+    const _chud = document.getElementById('cam-hud');
+    if(_chud) _chud.style.display = 'none';
+    const _cpan = document.getElementById('cam-panel');
+    if(_cpan) _cpan.style.display = 'none';
+    const _ctint = document.getElementById('cam-wb-tint');
+    if(_ctint) _ctint.style.display = 'none';
+    const _cframe = document.getElementById('cam-frame');
+    if(_cframe) _cframe.style.display = 'none';
+    // Restore user FOV (cam mode locked camera.fov to sensor VFov).
+    if(typeof cam.prevFOV === 'number'){
+      fov = cam.prevFOV;
+      camera.fov = cam.prevFOV;
+      camera.aspect = innerWidth / Math.max(1, innerHeight);
+      camera.updateProjectionMatrix();
+    }
+    markDirty(4);
+  }
+  // Env panel (note: env preset stays applied — we only hide the panel)
+  if(typeof env !== 'undefined' && env && env.panelOpen){
+    env.panelOpen = false;
+    const _ep = document.getElementById('env-panel'); if(_ep) _ep.style.display = 'none';
+    const _eb = document.getElementById('btn-env');   if(_eb) _eb.classList.remove('on');
+  }
+  // Minimap big-view
+  if(typeof _mmUserVisible !== 'undefined' && _mmUserVisible){
+    _mmUserVisible = false;
+    const _mx = document.getElementById('mm-expanded');
+    if(_mx) _mx.style.display = 'none';
+    if(typeof mmExpanded !== 'undefined') mmExpanded = false;
+    const _mb = document.getElementById('btnMinimap');
+    if(_mb) _mb.classList.remove('on');
+    const _ml = document.getElementById('lbl-minimap');
+    if(_ml) _ml.textContent = (window._lang === 'en') ? 'Show Map' : 'マップ表示';
+  }
 }
 function _closeMeasureOnly(){
   msr.active=false;
@@ -4913,7 +4955,12 @@ window.addEventListener('keydown', e=>{
 });
 
 window.toggleCamTool = function(){
-  cam.active = !cam.active;
+  const wasActive = cam.active;
+  // Mutual-exclusion: opening カメラ closes 測定 / 環境 / マップ / 画質.
+  // closeAllPanels also closes the camera panel itself, so we read the
+  // pre-close state and then flip from there.
+  if(!wasActive) closeAllPanels();
+  cam.active = !wasActive;
   const btn  = document.getElementById('btnCamTool');
   const hud  = document.getElementById('cam-hud');
   const pan  = document.getElementById('cam-panel');
@@ -6792,18 +6839,18 @@ async function loadSplatFile(file){
         showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
       }
     }
-    // iPhone + >300 MB: SEED ポリゴン半減 to ON in localStorage if the
-    // user hasn't expressed a preference yet. This makes the toggle UI
-    // visibly reflect the recommended setting (instead of silently
-    // halving behind the scenes), keeps memory at half so the tab
-    // doesn't crash, and lets the user flip it back off any time.
+    // > 300 MB PLY / SPLAT on ANY device: SEED ポリゴン半減 to ON in
+    // localStorage when the user hasn't expressed a preference yet.
+    // Why all devices, not just iPhone: even on iPad / desktop a 400 MB+
+    // scan triples to ~1.2 GB during parse + Spark build; iPhone is the
+    // most likely to crash, but desktop browsers also tank loading
+    // times. Letting the user opt-out (toggle OFF after seeing the
+    // panel checkbox flip ON) is friendlier than silently halving.
     // Once seeded, the preference persists across loads.
-    if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod &&
-       (ext === 'ply' || ext === 'splat') && file && file.size > 300*1024*1024){
+    if((ext === 'ply' || ext === 'splat') && file && file.size > 300*1024*1024){
       try {
         if(localStorage.getItem('locahun_splat_stride') == null){
           localStorage.setItem('locahun_splat_stride', '2');
-          // Reflect in UI: panel checkbox + (if visible) the hint card.
           const cb = document.getElementById('lowpoly-toggle');
           if(cb) cb.checked = true;
           const hintCb = document.getElementById('lph-cb');
@@ -14197,7 +14244,10 @@ let _mmCollapsed=false;
 let _mmUserVisible=false; // user-controlled minimap on/off (default OFF)
 
 window.toggleMinimapVisible=function(){
-  _mmUserVisible=!_mmUserVisible;
+  const wasVisible = _mmUserVisible;
+  // Mutual-exclusion: opening マップ closes 測定 / カメラ / 環境 / 画質.
+  if(!wasVisible) closeAllPanels();
+  _mmUserVisible = !wasVisible;
   const ex=document.getElementById('mm-expanded');
   const btn=document.getElementById('btnMinimap');
   if(_mmUserVisible){
@@ -15742,6 +15792,22 @@ window._scheduleQualityProbe = function(){
 };
 
 window.setFOV=function(degrees,idx){
+  // Camera-tool mode owns camera.fov — its applyCamSettings() locks the
+  // projection to the sensor's true vertical FOV. If we let setFOV()
+  // overwrite camera.fov while cam.active, the safe-frame view ends up
+  // with the wrong projection (user-reported "カメラ画角がFOVで変更され
+  // てしまう"). Refuse the change in that mode and surface a toast so
+  // the user knows to leave camera mode first.
+  if(typeof cam !== 'undefined' && cam && cam.active){
+    if(typeof showUndoToast === 'function'){
+      showUndoToast('📷 カメラ撮影モード中は FOV を変更できません');
+    }
+    // Visual: keep the FOV button highlight in sync with the locked fov
+    // (which is sensorVFov, not necessarily one of the 50/70/90/110
+    // presets), so re-render the button state as 'none on'.
+    document.querySelectorAll('#fovbtns button').forEach(b => b.classList.remove('on'));
+    return;
+  }
   const before = fov;
   fov=degrees; camera.fov=fov; camera.updateProjectionMatrix();
   const _fl = document.getElementById('fovLabel'); if(_fl) _fl.textContent = degrees+'°';
