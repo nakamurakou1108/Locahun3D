@@ -44,7 +44,15 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
 }
 #topbar .tb-home:hover{background:rgba(255,255,255,.12);color:#D8D8D8;}
 #topbar .tb-sep{flex:1;}
-#topbar .tb-version{font-size:.65em;color:rgba(255,255,255,.2);letter-spacing:.06em;}
+/* tb-version was previously in the topbar; moved to the home screen
+   (under the changelog) at the user's request. The element still
+   carries id="tb-version" so reportBug() / checkForUpdate() can read it. */
+#dz .dz-version-line{
+  margin-top:14px;text-align:center;
+  font-size:.7em;color:rgba(255,255,255,.28);letter-spacing:.08em;
+  font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;
+  user-select:none;
+}
 #topbar .tb-lang{
   background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
   color:rgba(160,160,160,.7);border-radius:4px;padding:2px 7px;font-size:.68em;
@@ -1138,14 +1146,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
          .zip → _loadProjectZipFromFile automatically) or via drag-and-drop. -->
     <span id="tb-project-name" style="font-size:.78em;color:rgba(200,200,200,.85);cursor:default;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis;padding:2px 8px;border-radius:4px;border:1px solid transparent;user-select:none;letter-spacing:.02em;" ondblclick="startEditProjectName()" title="ダブルクリックで編集">Untitled Project</span>
   </div>
-  <button class="tb-home" onclick="resetToHome()" id="tb-home-btn">⚡ LOCAHUN 3D</button>
+  <button class="tb-home" onclick="resetToHome()" id="tb-home-btn">LOCAHUN 3D</button>
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-end">
     <button class="tb-update" id="tb-update-btn" onclick="checkForUpdate(true)"
       title="更新を確認"><span class="tb-report-inline" id="tb-report-btn"
         onclick="event.stopPropagation();reportBug();return false;"
         title="エラー / 不具合を開発者に報告">🐛</span>🔄 <span id="tb-update-lbl">更新確認</span></button>
     <span class="tb-integrity" id="tb-integrity" hidden></span>
-    <span class="tb-version" id="tb-version">v 0.0.1-alpha.1</span>
     <button class="tb-lang" id="tb-lang-btn" onclick="toggleLang()">EN</button>
   </div>
 </div>
@@ -2388,7 +2395,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
     ▶ <span id="dz-continue-text">編集を続ける</span>
   </button>
 
-  <!-- ── Changelog (bottom of home screen, collapsible) ── -->
+  <!-- ── Changelog (bottom of home screen, collapsible) ──
+       Version label is rendered as a sibling AFTER this block.
+  -->
   <div class="dz-changelog" id="dz-changelog">
     <button class="dz-changelog-head" type="button" onclick="toggleChangelog()"
       aria-expanded="false" aria-controls="dz-changelog-body">
@@ -2419,6 +2428,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
         </ul>
       </div>
     </div>
+  </div>
+  <div class="dz-version-line">
+    <span id="tb-version">v 0.0.1-alpha.1</span>
   </div>
 </div>
 
