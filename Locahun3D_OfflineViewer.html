@@ -6330,22 +6330,16 @@ function subsampleSplatFile(rawBuf, stride){
     return null;
   }
 }
-// Dispatch helper — call before handing rawBuf to Spark. On phone tier,
-// auto-escalates stride for huge files so the iPhone Safari tab memory
-// cap (~1.5 GB) isn't blown by 400 MB+ scenes that triple-buffer through
-// Spark's parse + packedSplats + accumulator pipeline.
+// Dispatch helper — call before handing rawBuf to Spark.
+// Stride is determined entirely by `_splatStride()` (which honours the
+// localStorage user preference, falling back to 2 on phone tier and 1
+// elsewhere). The earlier file-size-based auto-escalation (>300 MB →
+// stride 4, >600 MB → stride 8) was removed per user request: it was
+// too aggressive about silently reducing fidelity on phones, and the
+// user prefers to either (a) accept the load risk at stride 2 or
+// (b) bump the stride manually via the quality panel.
 function maybeDecimateSplatBuffer(rawBuf, ext){
-  let stride = _splatStride();
-  // Phone-tier auto-escalation by file size:
-  //   > 300 MB : stride ≥ 4 (quarter)  ← protects against the 410 MB
-  //                                       Kousaten_ForDemo .splat class
-  //   > 600 MB : stride ≥ 8 (eighth)   ← protects against 800 MB+ PLY
-  if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone' &&
-     (ext === 'ply' || ext === 'splat') && rawBuf && rawBuf.byteLength){
-    const mb = rawBuf.byteLength / (1024*1024);
-    if(mb > 600)      stride = Math.max(stride, 8);
-    else if(mb > 300) stride = Math.max(stride, 4);
-  }
+  const stride = _splatStride();
   if(stride <= 1) return rawBuf;
   if(ext === 'ply'){
     const out = subsamplePLY(rawBuf, stride);
