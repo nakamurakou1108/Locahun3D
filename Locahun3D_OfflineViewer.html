@@ -6331,15 +6331,21 @@ function subsampleSplatFile(rawBuf, stride){
   }
 }
 // Dispatch helper — call before handing rawBuf to Spark.
-// Stride is determined entirely by `_splatStride()` (which honours the
-// localStorage user preference, falling back to 2 on phone tier and 1
-// elsewhere). The earlier file-size-based auto-escalation (>300 MB →
-// stride 4, >600 MB → stride 8) was removed per user request: it was
-// too aggressive about silently reducing fidelity on phones, and the
-// user prefers to either (a) accept the load risk at stride 2 or
-// (b) bump the stride manually via the quality panel.
+// Base stride comes from `_splatStride()` (localStorage preference,
+// defaulting to 2 on phone tier and 1 elsewhere). On phone tier we
+// also auto-escalate to stride 4 for files larger than 300 MB so the
+// iPhone Safari tab memory ceiling (~1.5 GB) isn't blown by big
+// scans that triple-buffer through Spark's parse + packedSplats +
+// accumulator pipeline. The >600 MB → stride 8 step is intentionally
+// not included; users with extreme files should convert to SPZ.
 function maybeDecimateSplatBuffer(rawBuf, ext){
-  const stride = _splatStride();
+  let stride = _splatStride();
+  if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone' &&
+     (ext === 'ply' || ext === 'splat') && rawBuf && rawBuf.byteLength){
+    if(rawBuf.byteLength > 300 * 1024 * 1024){
+      stride = Math.max(stride, 4);
+    }
+  }
   if(stride <= 1) return rawBuf;
   if(ext === 'ply'){
     const out = subsamplePLY(rawBuf, stride);
