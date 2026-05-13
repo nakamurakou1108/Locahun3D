@@ -1125,7 +1125,9 @@ body{position:fixed;top:0;left:0;}
       <span id="qp-lbl-lowpoly-hint" style="display:block;font-size:.72em;color:#404040">PLY/SPLAT のみ・要再読み込み</span>
     </label>
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
-      <input type="checkbox" id="lowpoly-toggle" onchange="setLowPolyMode(this.checked)"
+      <input type="checkbox" id="lowpoly-toggle"
+        onchange="setLowPolyMode(this.checked)"
+        onclick="setTimeout(function(){var c=document.getElementById('lowpoly-toggle');if(c)setLowPolyMode(c.checked);},0)"
         style="accent-color:#D8D8D8;cursor:pointer">
       <span style="font-size:.75em;color:#686868" id="qp-lbl-lowpoly-on">ON</span>
     </label>
@@ -6564,21 +6566,35 @@ async function reloadAllSplatLayers(){
 // visible immediately (Spark 2.0.0 has no live count knob, so a rebuild
 // is the only option). Project-ZIP reload also picks up the new stride.
 window.setLowPolyMode = function(on){
+  const want = !!on;
+  // Dedupe: iPad / iOS Safari often fires BOTH 'change' and 'click' for
+  // a single checkbox tap. Without dedupe the user's tap would kick off
+  // two parallel reloadAllSplatLayers() calls — the second one races
+  // the first and the panel ends up in an inconsistent state. Skip if
+  // the persisted state already matches the requested state.
   try {
-    localStorage.setItem('locahun_splat_stride', on ? '2' : '1');
+    const cur = localStorage.getItem('locahun_splat_stride');
+    const curOn = (cur === '2' || cur === '3' || cur === '4' ||
+                   cur === '5' || cur === '6' || cur === '7' || cur === '8');
+    if(curOn === want){
+      // Still sync UI in case visuals drifted, but skip the reload.
+      const cb0 = document.getElementById('lowpoly-toggle');
+      if(cb0 && cb0.checked !== want) cb0.checked = want;
+      return;
+    }
+  } catch(_){}
+  try {
+    localStorage.setItem('locahun_splat_stride', want ? '2' : '1');
   } catch(_){}
   const cb = document.getElementById('lowpoly-toggle');
-  if(cb && cb.checked !== !!on) cb.checked = !!on;
-  // Toast first so the user sees the intent while the reload spinner runs.
+  if(cb && cb.checked !== want) cb.checked = want;
   if(typeof showUndoToast === 'function'){
-    if(on){
+    if(want){
       showUndoToast(T('lowpoly-on') || '🎚 ポリゴン半減を適用中…');
     } else {
       showUndoToast(T('lowpoly-off') || '🎚 ポリゴン半減を解除中…');
     }
   }
-  // Auto-reload every loaded splat layer with the new stride. No-op if no
-  // splats are loaded yet (e.g. the user toggled before opening a file).
   if(typeof reloadAllSplatLayers === 'function'){
     reloadAllSplatLayers().catch(e => console.warn('[reload-splat]', e));
   }
@@ -6665,15 +6681,33 @@ window.showLowPolyHint = function(){
   };
   const xBtn = card.querySelector('#lph-x');
   const cb   = card.querySelector('#lph-cb');
+  const lbl  = cb ? cb.closest('label') : null;
   if(xBtn) xBtn.addEventListener('click', dismiss);
+  // iPad / iOS Safari is flaky about firing 'change' on checkboxes
+  // nested inside custom-styled labels — the visual flip happens but
+  // the change event sometimes never dispatches, so setLowPolyMode is
+  // never called. Listen for click on the input, change on the input,
+  // AND click on the wrapping label, and dedupe by the actual
+  // post-event cb.checked state so we don't double-apply.
+  let _lphLastApplied = (cb && cb.checked) ? 1 : 0;
+  const _lphApply = () => {
+    if(!cb) return;
+    const newState = !!cb.checked;
+    const key = newState ? 1 : 0;
+    if(key === _lphLastApplied) return;
+    _lphLastApplied = key;
+    try { window.setLowPolyMode(newState); } catch(e){ console.warn('[lph]', e); }
+    const panelCb = document.getElementById('lowpoly-toggle');
+    if(panelCb) panelCb.checked = newState;
+  };
   if(cb){
-    cb.addEventListener('change', ()=>{
-      try { window.setLowPolyMode(!!cb.checked); } catch(_){}
-      // Keep the quality-panel checkbox visually in sync (setLowPolyMode
-      // already does this, but we re-confirm in case localStorage threw).
-      const panelCb = document.getElementById('lowpoly-toggle');
-      if(panelCb) panelCb.checked = !!cb.checked;
-    });
+    cb.addEventListener('change', _lphApply);
+    cb.addEventListener('click',  () => setTimeout(_lphApply, 0));
+  }
+  if(lbl){
+    // Tap on the label area (label/icon span) — fires on iPad when the
+    // change event on the nested input fails to dispatch.
+    lbl.addEventListener('click', () => setTimeout(_lphApply, 0));
   }
   // Auto-dismiss after 12 s if user doesn't interact.
   setTimeout(dismiss, 12000);
