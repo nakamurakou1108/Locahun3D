@@ -1149,18 +1149,14 @@ body{position:fixed;top:0;left:0;}
        query that hides other touch-only widgets. -->
   <button id="btnAR" onclick="toggleARMode()" style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;white-space:nowrap;display:none;" title="AR モード（背面カメラ越しに 3DGS を重ねて表示）">📱 <span id="lbl-ar">AR</span></button>
 </div>
-<!-- AR mode: camera-passthrough backdrop video and floating exit overlay.
-     Both are hidden until toggleARMode() activates them. -->
+<!-- AR mode: camera-passthrough backdrop video. The previous floating
+     top-right exit overlay was removed because it overlapped the FPS /
+     quality badge (#qi-badge). Exit is now triggered by tapping the
+     #btnAR button itself — toggleARMode() swaps its label to "AR 終了"
+     and applies the .on (red) state while AR is active. -->
 <video id="ar-video" autoplay muted playsinline webkit-playsinline
   style="display:none;position:fixed;inset:0;width:100%;height:100%;
          object-fit:cover;z-index:-1;background:#000;pointer-events:none;"></video>
-<div id="ar-exit-overlay" style="display:none;position:fixed;top:60px;right:14px;z-index:200;pointer-events:auto;">
-  <button onclick="toggleARMode()"
-    style="background:rgba(255,60,60,.92);border:1px solid rgba(255,120,120,.6);
-           color:#fff;border-radius:20px;padding:8px 18px;font-size:.85em;
-           font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.45);
-           letter-spacing:.04em;">✕ <span id="lbl-ar-exit">AR 終了</span></button>
-</div>
 <div id="topbar">
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
     <button id="tb-save-btn" onclick="saveProjectZip()" style="background:rgba(100,255,150,.08);border:1px solid rgba(100,255,150,.2);color:rgba(100,255,150,.7);border-radius:5px;padding:2px 8px;font-size:.72em;cursor:pointer;transition:all .15s;white-space:nowrap" onmouseover="this.style.background='rgba(100,255,150,.18)'" onmouseout="this.style.background='rgba(100,255,150,.08)'" title="ZIP Save">💾 <span id="tb-save-lbl">保存</span></button>
@@ -2383,7 +2379,22 @@ body{position:fixed;top:0;left:0;}
 @media (pointer:coarse) and (any-hover:none){
   #btnAR{display:inline-block !important;}
 }
-#btnAR.on{background:rgba(120,255,180,.22)!important;border-color:rgba(140,255,200,.6)!important;color:#cbffd8!important;}
+/* AR-active state — clearly red so the user knows tapping it again will
+   EXIT AR (the floating top-right exit overlay was removed because it
+   overlapped the #qi-badge FPS readout). Pulses gently so it's easy to
+   find even with a busy camera-pass-through background. */
+#btnAR.on{
+  background:rgba(255,60,60,.92)!important;
+  border-color:rgba(255,120,120,.65)!important;
+  color:#fff!important;
+  font-weight:600;
+  box-shadow:0 0 0 0 rgba(255,90,80,0);
+  animation:btn-ar-pulse 1.8s ease-in-out infinite;
+}
+@keyframes btn-ar-pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,90,80,0);}
+  50%   {box-shadow:0 0 0 5px rgba(255,90,80,.22);}
+}
 /* In AR mode the page background must show through so the rear-camera
    video (z-index:-1) is visible. The viewer's normal black background lives
    on <html>/<body>; the body.ar-active overrides drop it to transparent so
@@ -7589,11 +7600,25 @@ async function _arEnter(){
     markDirty(3);
   };
   window.addEventListener('deviceorientation', arMode.orientHandler, true);
-  // UI state
+  // UI state — swap the AR button into "AR 終了" mode (red, pulsing) so
+  // the user can hit the same button again to exit. The previous floating
+  // top-right exit overlay overlapped the FPS / quality badge, so the
+  // exit affordance now lives on #btnAR itself.
   const btn = document.getElementById('btnAR');
-  if(btn){ btn.classList.add('on'); btn.blur(); }
-  const exitOv = document.getElementById('ar-exit-overlay');
-  if(exitOv) exitOv.style.display = 'block';
+  if(btn){
+    btn.classList.add('on');
+    btn.setAttribute('title', T('tt-ar-exit') || 'AR モードを終了');
+    btn.blur();
+  }
+  const lbl = document.getElementById('lbl-ar');
+  if(lbl) lbl.textContent = T('lbl-ar-exit');
+  // Repurpose the leading emoji as a visual "stop" cue.
+  if(btn){
+    // The button's first child node is the "📱 " text; replace it.
+    for(const n of btn.childNodes){
+      if(n.nodeType === Node.TEXT_NODE){ n.textContent = '✕ '; break; }
+    }
+  }
   arMode.active = true;
   showUndoToast(T('ar-on'));
   markDirty(10);
@@ -7620,10 +7645,18 @@ function _arExit(){
   arMode.baselineCaptured = false;
   if(renderer && renderer.setClearAlpha) renderer.setClearAlpha(1);
   document.body.classList.remove('ar-active');
+  // Restore AR button to its idle "📱 AR" appearance.
   const btn = document.getElementById('btnAR');
-  if(btn){ btn.classList.remove('on'); btn.blur(); }
-  const exitOv = document.getElementById('ar-exit-overlay');
-  if(exitOv) exitOv.style.display = 'none';
+  if(btn){
+    btn.classList.remove('on');
+    btn.setAttribute('title', T('tt-ar') || 'AR モード');
+    for(const n of btn.childNodes){
+      if(n.nodeType === Node.TEXT_NODE){ n.textContent = '📱 '; break; }
+    }
+    btn.blur();
+  }
+  const lbl = document.getElementById('lbl-ar');
+  if(lbl) lbl.textContent = T('lbl-ar');
   showUndoToast(T('ar-off'));
   markDirty(10);
 }
@@ -13727,6 +13760,7 @@ Object.assign(I18N.ja,{
   'lbl-ar':'AR',
   'lbl-ar-exit':'AR 終了',
   'tt-ar':'AR モード（背面カメラ越しに 3DGS を重ねて表示）',
+  'tt-ar-exit':'AR モードを終了',
   'ar-on':'📱 AR モード ON — 端末を傾けて視点を変えられます',
   'ar-off':'AR モードを終了しました',
   'ar-unsupported':'⚠ この端末では AR モードが利用できません',
@@ -13968,6 +14002,7 @@ Object.assign(I18N.en,{
   'lbl-ar':'AR',
   'lbl-ar-exit':'Exit AR',
   'tt-ar':'AR mode (rear camera passthrough with the 3DGS overlaid)',
+  'tt-ar-exit':'Exit AR mode',
   'ar-on':'📱 AR mode ON — tilt your device to change the view',
   'ar-off':'AR mode ended',
   'ar-unsupported':'⚠ This device does not support AR mode',
