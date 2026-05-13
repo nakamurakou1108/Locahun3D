@@ -11633,24 +11633,35 @@ function updatePerfStats(){
   // ── FPS & render time ──
   const _fpsFb = document.getElementById('fps');
   const fps  = _fpsDisplay || (_fpsFb ? Math.round(parseFloat(_fpsFb.textContent)||0) : 0);
-  // HONEST FRAME COST: use _wallMsAvg (real per-frame wall clock) rather
-  // than _ftAvg (which is only the synchronous renderer.render() wrap = GPU
-  // command submission). On iPad Safari we were seeing 0.47 ms "render"
-  // with 8 fps — the gap is entirely outside renderer.render(): main-thread
-  // work + iOS compositor throttle. Showing _wallMsAvg makes that visible
-  // so the watchdog and the user see the same number. Fallback to a fps-
-  // derived estimate if _wallMsAvg hasn't accumulated samples yet.
+  // Two distinct timings — show both because they answer different
+  // questions:
+  //   submitMs = synchronous renderer.render() wrap; the wall-clock time
+  //              the JS thread spent SUBMITTING GPU commands. On a high-
+  //              end GPU this is effectively the GPU load (~0.3 ms on a
+  //              5090 even with 26 M splats), but tells you nothing about
+  //              actual frame interval if Safari's compositor throttles.
+  //   wallMs   = real per-frame wall clock = 1000 / actual fps. Reflects
+  //              rAF cadence + everything between frames, NOT GPU work.
+  // Naming convention adopted here:
+  //   "GPU 負荷"          → submit / budget  (what the GPU is actually doing)
+  //   "余剰 (ヘッドルーム)" → 100 - GPU 負荷  (GPU spare capacity)
+  //   "フレーム時間"        → wallMs detailed (frame interval line)
+  // This restores the original meaning of the GPU-load bar: on a 5090 at
+  // any fps the bar should sit at near-zero, never at 109% just because
+  // the panel was conflating wall-clock latency with GPU work.
   const fpsDerived = fps > 0 ? (1000 / fps) : 0;
   const wallMs = (typeof _wallMsAvg === 'number' && _wallMsAvg > 0)
                  ? _wallMsAvg
                  : fpsDerived;
-  const submitMs = Math.max(0.01, _ftAvg);   // GPU submit only, kept for debug line
+  const submitMs = Math.max(0.01, _ftAvg);
   const renderMs = Math.max(0.01, wallMs > 0 ? wallMs : submitMs);
   const budget   = FRAME_MS;                  // 16.67ms @ 60fps
 
-  // Utilisation: render time vs frame budget (>100% = can't hit 60fps)
-  const util    = Math.min(200, (renderMs / budget) * 100);
-  // Surplus: budget not consumed by render (capped 0–100%)
+  // GPU 負荷 = how much of the 60fps budget the GPU command submit ate
+  // (essentially "is the GPU saturated?"). Stays low on capable hardware
+  // regardless of whether rAF is throttled — that's the desired semantics.
+  const util    = Math.min(200, (submitMs / budget) * 100);
+  // 余剰 = unused GPU budget (always 100 - util on the same axis).
   const surplus = Math.max(0, Math.min(100, 100 - util));
 
   // Colour grade
@@ -12087,6 +12098,17 @@ let _lastRenderInfo = { calls:0, triangles:0, geometries:0, textures:0 };
 let _fpsCounts = 0, _fpsElapsed = 0, _fpsDisplay = 0;
 let _lastPerfFrameTime = performance.now();
 
+// Whether to cap fps at 60. True on touch hardware (iPad / iPhone /
+// Android) where ProMotion 120 Hz panels waste battery + invite thermal
+// throttling for no visible benefit on splat scenes. False on desktop:
+// 144 / 165 Hz monitors clear the strict FRAME_MS-1 gate unevenly and
+// would land at 48 fps, which is worse than uncapped native refresh.
+const _fpsCapTouchOnly = (function(){
+  try {
+    return window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
+  } catch(_){ return false; }
+})();
+
 // ══════════════════════════════════════════════════
 //  CSS REPROJECTION  (input → canvas, runs at 60 Hz)
 // ══════════════════════════════════════════════════
@@ -12272,16 +12294,21 @@ function animate(now) {
   requestAnimationFrame(animate);
   // Hard gates: GPU context lost or tab hidden → don't render, don't compute
   if(_ctxLost || _tabHidden) return;
-  // ── 60 fps hard cap (re-introduced 2026-05) ──
-  // requestAnimationFrame on its own runs at the display's native refresh
-  // — that means 120 fps on iPad Pro / ProMotion Mac and 144-165 fps on
-  // gaming monitors. Per user request, cap to 60 across every device:
-  // anything past 60 fps just doubles GPU work, halves headroom, and on
-  // iPad Pro accelerates thermal throttling without any perceptible
-  // visual benefit (the scene is splat data, not crisp UI animation).
-  // Threshold = FRAME_MS - 1 ms allows for normal rAF jitter on 60 Hz
-  // displays so we don't accidentally undershoot to 30 fps there.
-  if(now - _lastFrameTime < FRAME_MS - 1) return;
+  // ── 60 fps soft cap on TOUCH devices only ──
+  // iPad Pro (120 Hz ProMotion) and 120 Hz iPhones used to render at the
+  // panel's native refresh, which on heavy splat scenes doubles GPU work
+  // for negligible perceptual gain (splat motion blur is intrinsic to the
+  // rasterisation; extra frames don't sharpen it) AND speeds up thermal
+  // throttling on phones. Capping rAF to 60 Hz keeps the experience
+  // responsive without overworking the device.
+  //
+  // On DESKTOP the cap is intentionally OFF: a strict FRAME_MS gate on
+  // 144 Hz / 165 Hz displays ends up dropping below 60 fps because the
+  // rAF tick interval (6-7 ms) divides into 16.67 ms unevenly — you have
+  // to skip 2-3 rAFs to clear the gate, landing at ~48 fps. Better to
+  // let desktop run free at its native refresh; the GPU on those rigs is
+  // never the limiting factor on a single-splat scene.
+  if(_fpsCapTouchOnly && now - _lastFrameTime < FRAME_MS - 1) return;
   const elapsed = now - _lastFrameTime;
   _lastFrameTime = now;
 
