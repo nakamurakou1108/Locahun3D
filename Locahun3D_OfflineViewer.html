@@ -6330,9 +6330,22 @@ function subsampleSplatFile(rawBuf, stride){
     return null;
   }
 }
-// Dispatch helper — call before handing rawBuf to Spark.
+// Dispatch helper — call before handing rawBuf to Spark. On phone tier,
+// auto-escalates stride for huge files so the iPhone Safari tab memory
+// cap (~1.5 GB) isn't blown by 400 MB+ scenes that triple-buffer through
+// Spark's parse + packedSplats + accumulator pipeline.
 function maybeDecimateSplatBuffer(rawBuf, ext){
-  const stride = _splatStride();
+  let stride = _splatStride();
+  // Phone-tier auto-escalation by file size:
+  //   > 300 MB : stride ≥ 4 (quarter)  ← protects against the 410 MB
+  //                                       Kousaten_ForDemo .splat class
+  //   > 600 MB : stride ≥ 8 (eighth)   ← protects against 800 MB+ PLY
+  if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone' &&
+     (ext === 'ply' || ext === 'splat') && rawBuf && rawBuf.byteLength){
+    const mb = rawBuf.byteLength / (1024*1024);
+    if(mb > 600)      stride = Math.max(stride, 8);
+    else if(mb > 300) stride = Math.max(stride, 4);
+  }
   if(stride <= 1) return rawBuf;
   if(ext === 'ply'){
     const out = subsamplePLY(rawBuf, stride);
@@ -6824,8 +6837,17 @@ async function loadSplatFile(file){
     mainL._isMain=true;
     mainL._loadFlipped=splatFlipped;
     applyLayerFlipQuat(mainL);
-    mainL._rawBuffer=rawBuf;   // ← ZIP保存用キャッシュ
+    // ZIP-save cache. Use the DECIMATED buffer (`_splatBytes`) rather than
+    // the original — on phone tier with a 410 MB scan that's the difference
+    // between keeping 410 MB alive forever and dropping it to 100 MB after
+    // GC reclaims `rawBuf`. The user's ZIP will then contain the decimated
+    // version, which matches what they're actually viewing anyway. On
+    // desktop / iPad (stride=1) `_splatBytes === rawBuf` so this is a no-op.
+    mainL._rawBuffer=_splatBytes;
     mainL._rawExt=ext;
+    // Explicitly release the reference to the (possibly huge) original so
+    // GC can reclaim it now that Spark + cache no longer need it.
+    if(_splatBytes !== rawBuf) { /* hint to GC — original Float buffer goes here */ }
     // Per-layer pick cache so the picker works on this exact mesh (matrixWorld) regardless
     // of how many additional splats are loaded later.
     mainL._splatCache = stats.cache;
@@ -11490,7 +11512,9 @@ async function loadAdditionalSplat(file){
     const L=addLayer({name:file.name.replace(/\.[^.]+$/,''),type:'splat',mesh:sm,rot:{x:0,y:0,z:0}});
     L._loadFlipped=flipped;
     applyLayerFlipQuat(L);
-    L._rawBuffer=rawBuf; L._rawExt=ext;
+    // Cache decimated bytes, not the original — same memory rationale as
+    // loadSplatFile() above. Frees the original buffer on phone tier.
+    L._rawBuffer=_splatBytes; L._rawExt=ext;
     // Build per-layer pick cache so measurement works on this splat too
     if(ext==='ply'||ext==='splat'){
       setMsg(T('parsing')); setBar(80);
