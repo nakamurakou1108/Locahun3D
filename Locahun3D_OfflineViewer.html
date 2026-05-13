@@ -33,7 +33,17 @@ html,body{
   user-select:none;
 }
 body{position:fixed;top:0;left:0;}
-#c{display:block;width:100vw;height:100vh;touch-action:none;}
+#c{
+  display:block;width:100vw;height:100vh;touch-action:none;
+  /* will-change:transform promotes the canvas to its own compositor layer
+     so CSS reprojection (translate3d driven by touch events at 60 Hz)
+     runs on the GPU and stays smooth even while the rAF animate loop is
+     iPad-Safari-throttled to ~11 Hz. backface-visibility:hidden is the
+     classic Safari hint that pairs with it. */
+  will-change:transform;
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+}
 /* Belt-and-suspenders: also disable touch defaults on the joystick and
    the canvas-level overlay so a stray finger never starts a page-scroll
    from those regions. Do NOT add this to #hud — it contains scrollable
@@ -12199,6 +12209,67 @@ let _lastRenderInfo = { calls:0, triangles:0, geometries:0, textures:0 };
 let _fpsCounts = 0, _fpsElapsed = 0, _fpsDisplay = 0;
 let _lastPerfFrameTime = performance.now();
 
+// ══════════════════════════════════════════════════
+//  CSS REPROJECTION  (input → canvas, runs at 60 Hz)
+// ══════════════════════════════════════════════════
+// On iPad / iPhone the WebGL animate() loop is rAF-throttled to ~11 Hz
+// when scenes get heavy, even though touch events keep firing at 60 Hz.
+// Pure JS frame interpolation can't help because rAF is the only animation
+// clock the renderer can use. But the *visual feedback* of input can be
+// driven from outside rAF: every time a touch / mouse / gyro event nudges
+// _yawTarget / _pitchTarget, we apply a CSS translate3d to the canvas
+// element so the rendered pixels appear to follow the input immediately.
+// When the next WebGL render fires, the new frame contains the updated
+// view AND we clear the CSS offset — the two changes cancel exactly so
+// there's no visible "snap".
+//
+// Disabled inside AR mode (V1 or V2) — both AR variants do their own
+// canvas compositing and a CSS transform would offset the camera-
+// passthrough background incorrectly.
+//
+// Disabled via `?smooth=0` URL param if it causes artifacts on a given
+// device (per-pixel scene parallax can't be reprojected exactly, only
+// approximated as a flat 2-D shift; the approximation is convincing for
+// small deltas but visibly wrong for very large drags).
+let _reprojectionEnabled = !/[?&]smooth=0/.test(location.search);
+let _lastRenderYaw   = 0;
+let _lastRenderPitch = 0;
+function _applyCanvasReprojection(){
+  if(!_reprojectionEnabled) return;
+  if((typeof arMode   !== 'undefined' && arMode   && arMode.active) ||
+     (typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active)) return;
+  if(!canvas || !camera) return;
+  // FOV (radians) — vertical from camera.fov, horizontal derived via aspect
+  const fovV = camera.fov * Math.PI / 180;
+  const fovH = 2 * Math.atan(Math.tan(fovV * 0.5) * (camera.aspect || (innerWidth / Math.max(1, innerHeight))));
+  const dY = _yawTarget   - _lastRenderYaw;   // radians
+  const dP = _pitchTarget - _lastRenderPitch; // radians
+  // Pixel offset: a yaw delta of one FOV would shift the canvas one
+  // viewport width; we scale linearly for small deltas (the small-angle
+  // approximation is the dominant error term but is sub-perceptual under
+  // typical drag distances).
+  let pxX = (dY / fovH) * innerWidth;
+  let pxY = (dP / fovV) * innerHeight;
+  // Hard-clip the offset so a huge fling doesn't translate the canvas
+  // off-screen (which looks worse than the original choppiness).
+  const limX = innerWidth  * 0.5;
+  const limY = innerHeight * 0.5;
+  if(pxX >  limX) pxX =  limX; else if(pxX < -limX) pxX = -limX;
+  if(pxY >  limY) pxY =  limY; else if(pxY < -limY) pxY = -limY;
+  // translate3d forces the compositor to put the canvas on its own layer
+  // (hardware-accelerated), which is what lets the offset update at 60 Hz
+  // independent of the rAF-throttled animate loop.
+  canvas.style.transform = 'translate3d(' + pxX.toFixed(2) + 'px,' + pxY.toFixed(2) + 'px,0)';
+}
+function _clearCanvasReprojection(){
+  if(!canvas) return;
+  if(canvas.style.transform) canvas.style.transform = '';
+}
+// Expose for the input handlers (touchmove / mousemove / joystick / gyro)
+// to call after they nudge _yawTarget / _pitchTarget. Idempotent — safe to
+// call from any event handler.
+window._applyCanvasReprojection = _applyCanvasReprojection;
+
 // ── On-demand rendering ──
 // _renderDirtyTimer: render N more frames after any scene/state change.
 // _splatActiveUntil: force continuous render during Spark 3DGS async loading/sorting.
@@ -12514,6 +12585,17 @@ function animate(now) {
   if(_useOrtho){ _syncOrthoCamera(); renderer.render(scene,_orthoCamera); }
   else renderer.render(scene,camera);
   const _renderMs = performance.now() - _t0;
+  // CSS reprojection bookkeeping: the freshly-rendered frame embeds the
+  // current yaw/pitch, so any predictive canvas offset that was applied
+  // by input handlers since the last render must be cleared and the
+  // reference yaw/pitch advanced. Cheap (one DOM write per frame).
+  if(_reprojectionEnabled &&
+     !((typeof arMode   !== 'undefined' && arMode   && arMode.active) ||
+       (typeof arModeV2 !== 'undefined' && arModeV2 && arModeV2.active))){
+    _lastRenderYaw   = yaw;
+    _lastRenderPitch = pitch;
+    if(canvas && canvas.style.transform) canvas.style.transform = '';
+  }
   // Sync DOM-based light halos with the freshly rendered frame. The UI to
   // add lights is gone (the light feature has been removed), so in normal
   // use no light layers exist and this hot-loop call is wasteful. Gate it
@@ -15290,6 +15372,10 @@ window.addEventListener('mousemove',e=>{
   const _dy = _locked ? (e.movementY || 0) : (e.clientY - dragY);
   _yawTarget   -= _dx * 0.003;
   _pitchTarget  = Math.max(-1.55, Math.min(1.55, _pitchTarget - _dy * 0.003));
+  // CSS reprojection: instant visual response between rAF ticks (mostly a
+  // no-op on desktop where rAF is 60 Hz, but harmless and consistent with
+  // the touch path).
+  if(typeof _applyCanvasReprojection === 'function') _applyCanvasReprojection();
   dragX=e.clientX; dragY=e.clientY;
   markDirty(3);
   if(layers.some(L=>L.type==='splat')) bumpSplatActive(2000);
@@ -15453,6 +15539,11 @@ canvas.addEventListener('touchmove',e=>{
       } else {
         _yawTarget   -= dx;
         _pitchTarget  = Math.max(-1.55, Math.min(1.55, _pitchTarget - dy));
+        // CSS reprojection: shift the canvas image to match the new yaw/
+        // pitch target so the user sees instant feedback even when the
+        // animate loop is rAF-throttled to ~11 Hz on iPad. Called outside
+        // animate(), so it runs at the touchmove rate (~60 Hz on iOS).
+        if(typeof _applyCanvasReprojection === 'function') _applyCanvasReprojection();
       }
       tlX=t.clientX;tlY=t.clientY;
       markDirty(3);
