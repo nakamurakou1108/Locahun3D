@@ -6622,7 +6622,20 @@ function _makeWalkClip(bones, opts){
   const KNEE       = 50;   // deg, knee bend on back-swing
   const KNEE_PASS  = 18;   // deg, slight knee bend during passing pose
   const SWING_ARM  = 28;   // ± deg, upper arm swing about world X
-  const ARM_DROP   = 88;   // deg, base drop from T-pose (~vertical)
+  // Arm drop: 75° from T-pose horizontal → 15° outward from straight down.
+  // Previously 88-90° = arms straight down = swing-back phase would clip
+  // through hips ("手の振りが尻に貫通"). 15° outward gives clearance.
+  const ARM_DROP   = 75;
+  // Hips vertical bob — body rises during PASSING, sinks during DOWN.
+  // Magnitude in BIND (centimetre) units since Mixamo skeleton bones are
+  // in cm and only the wrapper rig is scaled to metres. ~2.5cm peak.
+  const HIP_BOB    = 2.5;
+  // Foot rotation deltas applied as bone-LOCAL Euler X (in degrees).
+  // Local because the parent (lowerLeg) rotates significantly during the
+  // cycle — a world-frame rotation would smear with the parent's swing.
+  const FOOT_HEEL  =  18;  // toes up (heel-strike pose)
+  const FOOT_PUSH  = -30;  // toes down (push-off pose)
+  const FOOT_FLAT  =   0;
 
   // 5-keyframe (4 + loop-closing repeat) cycle with explicit PASSING poses.
   // Three.js interpolates linearly between adjacent keys, so without
@@ -6704,7 +6717,7 @@ function _makeWalkClip(bones, opts){
     ],
   };
 
-  const times = new Float32Array([0, 0.25, 0.5, 0.75, 1.0]).map(t => t * cycleSec);
+  const times5 = [0, 0.25, 0.5, 0.75, 1.0].map(t => t * cycleSec);
   const tracks = [];
 
   // Reusable temporaries
@@ -6714,48 +6727,96 @@ function _makeWalkClip(bones, opts){
   const opQ     = new THREE.Quaternion();
   const accumQ  = new THREE.Quaternion();
   const finalQ  = new THREE.Quaternion();
+  const tmpEu   = new THREE.Euler();
+  const tmpQ    = new THREE.Quaternion();
 
+  // ── World-axis rotation tracks (legs / arms / head) ────────────────────
   for(const [logical, phases] of Object.entries(poses)){
     const bone = bones[logical];
     if(!bone || !bone.userData._restQ) continue;
     if(!bone.parent) continue;
 
-    // Capture parent's CURRENT world quaternion (which is bind pose for the
-    // entire chain since we run this at avatar build time — before the
-    // mixer has touched anything).
     bone.parent.updateMatrixWorld(true);
     bone.parent.getWorldQuaternion(parentWQ);
     parentWQI.copy(parentWQ).invert();
 
     const values = new Float32Array(phases.length * 4);
-
     for(let i = 0; i < phases.length; i++){
       const ops = phases[i];
-      // Build R_in_parent_frame = compose all ops as world rotations, then
-      // express in parent local frame. ops[0] is applied LAST in world =>
-      // listed first in the array (gets multiplied on the LEFT of accumQ).
       accumQ.identity();
       for(let k = ops.length - 1; k >= 0; k--){
         const [wx, wy, wz, deg] = ops[k];
         axisV.set(wx, wy, wz);
-        // axis in parent's local frame
         axisV.applyQuaternion(parentWQI);
         opQ.setFromAxisAngle(axisV.normalize(), deg * tD * amp);
-        // accumQ = opQ × accumQ  (opQ applied last among those already accumulated)
         accumQ.premultiply(opQ);
       }
-      // final_q = accumQ × rest  (rest applied first, then accumQ)
       finalQ.copy(accumQ).multiply(bone.userData._restQ);
-
       values[i*4+0] = finalQ.x;
       values[i*4+1] = finalQ.y;
       values[i*4+2] = finalQ.z;
       values[i*4+3] = finalQ.w;
     }
-
     tracks.push(new THREE.QuaternionKeyframeTrack(
-      bone.name + '.quaternion', Array.from(times), values));
+      bone.name + '.quaternion', times5.slice(), values));
   }
+
+  // ── Foot rotation tracks (bone-LOCAL Euler X) ───────────────────────────
+  // Foot rotation needs to follow the leg (parent), so we use a LOCAL Euler
+  // delta — NOT a world-axis projection. The X axis in the foot's local
+  // bind frame is the ankle hinge axis.
+  //
+  //   t=0    CONTACT-A: L-foot heel strike (toes up), R-foot push off (toes down)
+  //   t=0.25 PASSING-A: L-foot supporting (flat), R-foot mid-swing (toes up)
+  //   t=0.50 CONTACT-B: mirror of t=0
+  //   t=0.75 PASSING-B: mirror of t=0.25
+  //   t=1.00 loop
+  const footPoses = {
+    footL: [FOOT_HEEL, FOOT_FLAT, FOOT_PUSH, FOOT_FLAT, FOOT_HEEL],
+    footR: [FOOT_PUSH, FOOT_FLAT, FOOT_HEEL, FOOT_FLAT, FOOT_PUSH],
+  };
+  for(const [logical, degs] of Object.entries(footPoses)){
+    const bone = bones[logical];
+    if(!bone || !bone.userData._restQ) continue;
+    const values = new Float32Array(degs.length * 4);
+    for(let i = 0; i < degs.length; i++){
+      tmpEu.set(degs[i] * tD * amp, 0, 0, 'XYZ');
+      tmpQ.setFromEuler(tmpEu);
+      // bone_local = rest × delta  (delta in bone's bind-local frame)
+      finalQ.copy(bone.userData._restQ).multiply(tmpQ);
+      values[i*4+0] = finalQ.x;
+      values[i*4+1] = finalQ.y;
+      values[i*4+2] = finalQ.z;
+      values[i*4+3] = finalQ.w;
+    }
+    tracks.push(new THREE.QuaternionKeyframeTrack(
+      bone.name + '.quaternion', times5.slice(), values));
+  }
+
+  // ── Hips vertical bob (position track, 2× cycle frequency) ──────────────
+  // Real walk cycles oscillate the body Y up to ~3% of leg length, twice
+  // per stride: LOW at "DOWN" phases (mid-step, both feet contacting),
+  // HIGH at "PASSING/UP" phases (one straight leg supporting). Without
+  // this oscillation the head/shoulder positions look frozen and the gait
+  // reads as a "floating mannequin", not a walking person.
+  //
+  // 9 keyframes, 1/8 cycle spacing — produces a triangle-wave Y curve.
+  const pelvisBone = bones.pelvis;
+  if(pelvisBone){
+    const rest = pelvisBone.position;
+    const times9 = [0, 1/8, 2/8, 3/8, 4/8, 5/8, 6/8, 7/8, 1].map(t => t * cycleSec);
+    //                CONTACT-A  DOWN-A   PASSING-A DOWN-A'  CONTACT-B DOWN-B   PASSING-B DOWN-B'  loop
+    const dy = [        0,      -HIP_BOB, +HIP_BOB, -HIP_BOB,    0,    -HIP_BOB, +HIP_BOB, -HIP_BOB,   0];
+    const vals = new Float32Array(9 * 3);
+    for(let i=0;i<9;i++){
+      vals[i*3+0] = rest.x;
+      vals[i*3+1] = rest.y + dy[i] * amp;
+      vals[i*3+2] = rest.z;
+    }
+    tracks.push(new THREE.VectorKeyframeTrack(
+      pelvisBone.name + '.position', times9, vals));
+  }
+
   return new THREE.AnimationClip(name, cycleSec, tracks);
 }
 
