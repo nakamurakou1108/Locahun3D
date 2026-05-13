@@ -906,6 +906,32 @@ body{position:fixed;top:0;left:0;}
   #lp-footer-bar,
   #lp-divider,
   #layer-transform { display:none !important; }
+  /* Smartphone-only: shrink top-row UI to ~½ size. iPhone screens are too
+     narrow for the desktop topbar / action buttons / fps badge sizing,
+     and the user reported the originals looked oversized. iPad and other
+     touch devices with viewport ≥ 600 px are unaffected by this block. */
+  #topbar{
+    height:30px;
+    padding:0 6px;gap:4px;
+  }
+  #topbar .tb-home{padding:1px 6px;font-size:.62em;}
+  #topbar .tb-save-btn,
+  #topbar #tb-save-btn{padding:1px 6px;font-size:.6em;}
+  #topbar #tb-project-name{font-size:.62em;padding:1px 5px;max-width:120px;}
+  #topbar .tb-update{padding:1px 5px;font-size:.55em;}
+  #topbar .tb-lang{padding:1px 5px;font-size:.55em;}
+  #topbar .tb-bug{padding:1px 5px;font-size:.62em;}
+  /* Action row (カメラリセット / アバター歩行 / AR) — keep horizontally
+     centred but cut size roughly in half. */
+  #view-tl-btns{top:36px;gap:4px;}
+  #view-tl-btns > button,
+  #view-tl-btns button{
+    padding:3px 7px !important;font-size:.6em !important;
+  }
+  /* Top-right quality / fps badge — smaller padding + font. */
+  #qi-badge{
+    top:36px;right:8px;padding:2px 7px;font-size:.6em;gap:4px;
+  }
 }
 
 </style>
