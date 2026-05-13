@@ -4629,30 +4629,22 @@ function _camRefreshCaptureRes(){
 function applyCamSettings(){
   if(!cam.active) return;
   _camRefreshCaptureRes();
-  // Set the Three.js camera's vertical FOV so the SAFE-FRAME sub-rectangle
-  // (NOT the whole viewport) subtends the sensor's true vertical FOV. Three
-  // expresses camera.fov as the angle from viewport-top to viewport-bottom,
-  // so we have to scale UP whenever the safe-frame is smaller than the
-  // viewport (margin > 0, or sensor aspect narrower than viewport).
-  //
-  // The correct relationship comes from similar triangles on the image
-  // plane:
-  //   tan(camera.fov / 2) × (safeFrameH / viewportH) = tan(sensorVFov / 2)
-  //   ⇒ camera.fov = 2 × atan( tan(sensorVFov / 2) × viewportH / safeFrameH )
-  //
-  // Previously this was a *linear* scaling — `sensorVFov × (viewportH / h)`
-  // — which is only valid for tiny angles; at typical wide-angle / large-
-  // margin combinations it overshot FOV by several degrees, visibly
-  // widening in-frame content as margin or aspect cropping grew. The
-  // tan/atan form keeps the safe-frame's angular subtense exactly equal
-  // to sensorVFov for any margin / aspect.
-  const r = _camFrameRect();
+  // Camera vertical FOV is locked to the sensor's true vertical FOV.
+  // The safe-frame overlay is purely a visual crop indicator — it
+  // marks the rectangle that the JPEG capture will produce — and does
+  // NOT modify the projection. Earlier versions inflated camera.fov so
+  // the safe-frame sub-rectangle would subtend sensorVFov, but that
+  // had two side-effects the user reported as bugs:
+  //   • Adjusting 外側余白 (cam.margin) shifted the visible projection
+  //   • Collapsing / expanding the layer panel (which changes the
+  //     usable canvas width, hence _camFrameRect's safe-frame height)
+  //     also shifted the projection
+  // The capture code path still renders with camera.fov = sensorVFov
+  // and the sensor aspect, so what's inside the safe-frame in the live
+  // preview lines up with what gets captured.
   const sensorVFov = _camSensorVFovDeg();
-  const sensorVFovRad = sensorVFov * Math.PI / 180;
-  const newFovRad = 2 * Math.atan(Math.tan(sensorVFovRad / 2) * (r.viewportH / r.h));
-  const newFov = newFovRad * 180 / Math.PI;
-  fov = newFov;
-  camera.fov = newFov;
+  fov = sensorVFov;
+  camera.fov = sensorVFov;
   camera.updateProjectionMatrix();
   layoutCamFrame();
   drawCamGrid();
