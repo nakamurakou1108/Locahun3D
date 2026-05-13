@@ -14498,6 +14498,81 @@ function _setIntegrityIndicator(){
 // To change the recipient address, edit REPORT_EMAIL below.
 const REPORT_EMAIL = 'kou.n@kwi.jp';   // Bug reports — opens user's local mail client via mailto:
 
+// ── Report-fallback modal ─────────────────────────────────────────────────
+// Some users have no `mailto:` handler registered with their browser (no
+// Outlook installed, no default web-mailto, Chrome blocked the protocol).
+// In that case opening `mailto:` is silently a no-op and looks broken.
+// _showReportFallback() puts the same prefilled body in a modal that lets
+// the user (a) copy the address, (b) copy the body, or (c) open Gmail Web
+// in a new tab with everything pre-filled.
+function _showReportFallback(to, subject, body){
+  // Reuse existing modal style if present, otherwise inject a minimal one.
+  const old = document.getElementById('report-fallback-modal');
+  if(old) old.remove();
+  const m = document.createElement('div');
+  m.id = 'report-fallback-modal';
+  m.setAttribute('style', 'position:fixed;inset:0;z-index:99999;display:flex;' +
+    'align-items:center;justify-content:center;background:rgba(0,0,0,.78);' +
+    'font-family:system-ui,"Segoe UI",sans-serif;color:#e8e8e8;');
+  const gmail = 'https://mail.google.com/mail/?view=cm&fs=1'
+              + '&to='      + encodeURIComponent(to)
+              + '&su='      + encodeURIComponent(subject)
+              + '&body='    + encodeURIComponent(body);
+  m.innerHTML = `
+    <div style="background:#1a1a1c;border:1px solid #444;border-radius:10px;max-width:640px;
+                width:90%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;
+                box-shadow:0 8px 40px rgba(0,0,0,.7)">
+      <div style="padding:14px 18px;border-bottom:1px solid #2c2c2e;display:flex;
+                  justify-content:space-between;align-items:center;">
+        <strong>🐛 エラー報告 — メーラを開けませんでした</strong>
+        <button id="rfb-close" style="background:none;border:0;color:#aaa;font-size:1.4em;
+                cursor:pointer;line-height:1">×</button>
+      </div>
+      <div style="padding:14px 18px 6px;font-size:.9em;line-height:1.55;color:#bbb">
+        既定のメールアプリが未設定のため <code>mailto:</code> を起動できませんでした。
+        以下のいずれかで送信してください:
+      </div>
+      <div style="padding:0 18px 10px;display:flex;flex-wrap:wrap;gap:8px;">
+        <a id="rfb-gmail" href="${gmail}" target="_blank" rel="noopener"
+           style="background:#5b4632;border:1px solid #b9883b;color:#ffd87a;
+                  padding:8px 14px;border-radius:6px;text-decoration:none;font-size:.9em">
+          📧 Gmail で開く(新規タブ)
+        </a>
+        <button id="rfb-copy-to" style="background:#2c3c4e;border:1px solid #4a6478;color:#cfe4ff;
+                  padding:8px 14px;border-radius:6px;cursor:pointer;font-size:.9em">
+          📋 宛先をコピー
+        </button>
+        <button id="rfb-copy-body" style="background:#2c3c4e;border:1px solid #4a6478;color:#cfe4ff;
+                  padding:8px 14px;border-radius:6px;cursor:pointer;font-size:.9em">
+          📋 件名+本文をコピー
+        </button>
+      </div>
+      <div style="padding:6px 18px 4px;font-size:.78em;color:#888">
+        宛先: <code id="rfb-to-text"></code></div>
+      <textarea id="rfb-body" readonly style="margin:6px 18px 18px;flex:1;min-height:200px;
+                background:#0e0e10;color:#dadada;border:1px solid #333;border-radius:6px;
+                padding:10px 12px;font:.82em/1.5 ui-monospace,Menlo,Consolas,monospace;
+                resize:vertical;"></textarea>
+    </div>`;
+  document.body.appendChild(m);
+  m.querySelector('#rfb-to-text').textContent = to;
+  m.querySelector('#rfb-body').value = 'Subject: ' + subject + '\n\n' + body;
+  const close = () => m.remove();
+  m.querySelector('#rfb-close').onclick = close;
+  m.addEventListener('click', e => { if(e.target === m) close(); });
+  m.querySelector('#rfb-copy-to').onclick = async () => {
+    try{ await navigator.clipboard.writeText(to);
+      if(typeof showUndoToast === 'function') showUndoToast('宛先をコピーしました'); }
+    catch(_){ m.querySelector('#rfb-to-text').focus && m.querySelector('#rfb-to-text').focus(); }
+  };
+  m.querySelector('#rfb-copy-body').onclick = async () => {
+    const text = 'To: ' + to + '\nSubject: ' + subject + '\n\n' + body;
+    try{ await navigator.clipboard.writeText(text);
+      if(typeof showUndoToast === 'function') showUndoToast('件名+本文をコピーしました'); }
+    catch(_){ m.querySelector('#rfb-body').select(); }
+  };
+}
+
 window.reportBug = function(){
   try {
     const ver  = (document.getElementById('tb-version')?.textContent || '').trim();
@@ -14531,19 +14606,27 @@ window.reportBug = function(){
       'GPU     : ' + (glRenderer || '(unknown)'),
       'UA      : ' + ua,
     ].join('\n');
+    const body = bodyLines;
     const url = 'mailto:' + encodeURIComponent(REPORT_EMAIL)
               + '?subject=' + encodeURIComponent(subject)
-              + '&body='    + encodeURIComponent(bodyLines);
-    // Use a transient anchor so popup blockers / mailto handlers see a
-    // genuine user-gesture click (assigning location.href works too but is
-    // sometimes silently swallowed by some browsers).
-    const a = document.createElement('a');
-    a.href = url;
-    a.rel  = 'noopener';
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+              + '&body='    + encodeURIComponent(body);
+    // Try the simplest mailto trigger first: location.href. Then detect
+    // whether anything actually happened by listening for `blur` — if the
+    // browser handed mailto to an external app the page typically loses
+    // focus within ~250 ms. If no blur fires (no handler registered), fall
+    // back to the modal.
+    let handed = false;
+    const onBlur = () => { handed = true; };
+    window.addEventListener('blur', onBlur, { once: true });
+    try { location.href = url; } catch(_){}
+    setTimeout(() => {
+      window.removeEventListener('blur', onBlur);
+      // If still focused after 600 ms, mailto: was silently dropped. Open the
+      // fallback modal so the user has *some* way to send the report.
+      if(!handed && document.hasFocus()){
+        _showReportFallback(REPORT_EMAIL, subject, body);
+      }
+    }, 600);
   } catch(e){
     console.warn('[reportBug] failed:', e);
     if(typeof showUndoToast === 'function') showUndoToast('メール起動に失敗しました');
