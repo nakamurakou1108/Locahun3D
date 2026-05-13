@@ -2,7 +2,7 @@
 <html lang="ja" id="html-root">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>ロケハン3D</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,6 +22,15 @@ html,body{
   width:100%;height:100%;overflow:hidden;background:#000;
   font-family:system-ui,'Inter','Segoe UI',sans-serif;
   overscroll-behavior:none;
+  /* `touch-action: manipulation` on the document root disables the 300 ms
+     double-tap-to-zoom gesture on iOS Safari WITHOUT killing scroll inside
+     scrollable descendants (the layer-panel list, modals etc.). Combined
+     with the explicit `touch-action: none` on #c / #overlay / #joy, this
+     gives us click responsiveness everywhere and zero accidental zoom. */
+  touch-action:manipulation;
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
 }
 body{position:fixed;top:0;left:0;}
 #c{display:block;width:100vw;height:100vh;touch-action:none;}
@@ -2969,6 +2978,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 }, { once:true });
+
+// ── iOS / iPadOS pinch + double-tap zoom suppression ──
+// Triple-layer defense against the viewport zooming on touch input:
+//   1. <meta name="viewport" ... maximum-scale=1, user-scalable=no>
+//      (in <head>) — declarative, respected by modern iOS Safari.
+//   2. CSS `touch-action: manipulation` on html/body (in <style>) —
+//      kills the 300 ms double-tap-to-zoom gesture without breaking
+//      legitimate scroll inside modals / layer-panel lists.
+//   3. JS preventDefault on `gesturestart` / `gesturechange` / `gestureend`
+//      (iOS-only pinch events) and on `dblclick` everywhere — covers the
+//      edge cases where (1) and (2) silently fail (older iPadOS, hybrid
+//      WebView containers, some Chromium-based iOS browsers).
+['gesturestart','gesturechange','gestureend'].forEach(ev=>{
+  window.addEventListener(ev, e => { try { e.preventDefault(); } catch(_){} }, { passive:false });
+});
+document.addEventListener('dblclick', e => {
+  // Don't kill double-click on file inputs (some browsers use it to open
+  // the picker again). Anywhere else: prevent the default zoom action.
+  const t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  try { e.preventDefault(); } catch(_){}
+}, { passive:false });
+// Safari sometimes zooms when the user double-taps within ~300 ms even
+// when touch-action says no. Catch via touchend timing and preventDefault
+// the SECOND quick tap if it lands on a non-interactive target.
+(function(){
+  let lastTap = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if(now - lastTap < 320){
+      const t = e.target;
+      const interactive = t && (
+        t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' ||
+        t.tagName === 'SELECT' || t.tagName === 'BUTTON' ||
+        t.tagName === 'A' || (t.getAttribute && t.getAttribute('contenteditable'))
+      );
+      if(!interactive){
+        try { e.preventDefault(); } catch(_){}
+      }
+    }
+    lastTap = now;
+  }, { passive:false });
+})();
 // _heavyDisplay drives renderer construction (AA off, PR_CAP tighter, lower
 // shadow-map resolution). Was previously set for weak laptop GPUs and Intel
 // Macs, denying them MSAA + crisp shadows. Now all non-touch devices get the
