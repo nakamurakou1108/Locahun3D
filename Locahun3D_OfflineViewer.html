@@ -7852,22 +7852,24 @@ async function _arEnter(){
   // Request rear-facing camera. `ideal:'environment'` lets browsers without
   // a back camera (e.g. desktops with only a webcam) still grant the front
   // cam rather than failing outright. We HARD-CAP the requested resolution
-  // at 1280×720 / 30 fps on touch devices — iOS otherwise hands us a
-  // 1920×1080 (or even 4K) stream which the compositor then has to scale
-  // and blend with the WebGL canvas every frame, eating frame budget for
-  // visual quality the user can't perceive through a noisy passthrough
-  // background anyway. Using `max` (not `exact`) so devices that can't
-  // physically produce 1280×720 still negotiate down rather than failing.
-  // The 720p cap was the difference between iPad pinned at 8 fps and
-  // a usable AR frame rate in earlier testing.
+  // at MINIMUM viable resolution / frame rate on touch devices. The camera
+  // feed is just a backdrop the WebGL canvas composites over — sharpness
+  // past 640×360 is wasted while the iOS compositor pays linearly for
+  // every extra pixel AND `texImage2D(HTMLVideoElement)` in the V2 path
+  // pays per-frame for upload bandwidth. 15 fps halves that upload load
+  // again. Using `max` (not `exact`) so devices that can't physically
+  // produce 640×360 still negotiate down rather than failing.
+  //   width  : 640 max  (360p-ish in 16:9)
+  //   height : 360 max
+  //   frameRate: 15 max
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
-        width:  { ideal: 1280, max: 1280 },
-        height: { ideal: 720,  max: 720  },
-        frameRate: { ideal: 30, max: 30 },
+        width:  { ideal: 640, max: 640 },
+        height: { ideal: 360, max: 360 },
+        frameRate: { ideal: 15, max: 15 },
       },
       audio: false,
     });
@@ -7886,19 +7888,19 @@ async function _arEnter(){
       return;
     }
   }
-  // Belt-and-suspenders: if the negotiated track came back larger than
-  // our 720p cap anyway (some iOS versions ignore `max` on the first
-  // negotiation), apply a track-level constraint to clamp it. This is a
-  // no-op when the device already honoured the original constraint.
+  // Belt-and-suspenders: if the negotiated track came back larger than our
+  // 640×360 / 15 fps cap (some iOS versions ignore `max` on the first
+  // negotiation), apply a track-level constraint to clamp it. No-op when
+  // the device already honoured the original constraint.
   try {
     const track = stream.getVideoTracks()[0];
     if(track && typeof track.applyConstraints === 'function'){
       const s = track.getSettings ? track.getSettings() : {};
-      if((s.width || 0) > 1280 || (s.height || 0) > 720 || (s.frameRate || 0) > 30){
+      if((s.width || 0) > 640 || (s.height || 0) > 360 || (s.frameRate || 0) > 15){
         await track.applyConstraints({
-          width:  { max: 1280 },
-          height: { max: 720  },
-          frameRate: { max: 30 },
+          width:  { max: 640 },
+          height: { max: 360 },
+          frameRate: { max: 15 },
         }).catch(()=>{});
       }
     }
@@ -8111,15 +8113,19 @@ async function _arEnterV2(){
       }
     } catch(_){}
   }
-  // Same 720p / 30 fps cap as V1 — minimises texImage2D upload cost.
+  // Same minimum cap as V1: 640×360 / 15 fps. In V2 this matters EVEN
+  // MORE because texImage2D(HTMLVideoElement) runs every frame to upload
+  // the camera into a WebGL texture — upload cost scales with width ×
+  // height × frame rate. 640×360 @ 15 = 9 % of the bandwidth of 1280×720
+  // @ 30, so the per-frame upload becomes negligible on iPad.
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
-        width:  { ideal: 1280, max: 1280 },
-        height: { ideal: 720,  max: 720  },
-        frameRate: { ideal: 30, max: 30 },
+        width:  { ideal: 640, max: 640 },
+        height: { ideal: 360, max: 360 },
+        frameRate: { ideal: 15, max: 15 },
       },
       audio: false,
     });
@@ -8140,11 +8146,11 @@ async function _arEnterV2(){
     const track = stream.getVideoTracks()[0];
     if(track && typeof track.applyConstraints === 'function'){
       const s = track.getSettings ? track.getSettings() : {};
-      if((s.width || 0) > 1280 || (s.height || 0) > 720 || (s.frameRate || 0) > 30){
+      if((s.width || 0) > 640 || (s.height || 0) > 360 || (s.frameRate || 0) > 15){
         await track.applyConstraints({
-          width:  { max: 1280 },
-          height: { max: 720  },
-          frameRate: { max: 30 },
+          width:  { max: 640 },
+          height: { max: 360 },
+          frameRate: { max: 15 },
         }).catch(()=>{});
       }
     }
