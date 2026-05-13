@@ -14716,23 +14716,89 @@ canvas.addEventListener('touchend',e=>{
 // Centre / radius constants match the 1.6× CSS dimensions: container is
 // 176×176, knob 70×70, so the centre lives at (88,88) and the knob can
 // travel up to R=51 px (≈ 32 × 1.6) from centre before clamping.
+//
+// Previously two bugs combined to make the joystick "let go" while the
+// user was still dragging:
+//   1. `e.touches[0]` was used everywhere — but touches[0] isn't
+//      necessarily the joystick finger when a second touch (e.g. the
+//      touch-look / AR drag) is also active. The handler would then read
+//      coordinates from the wrong finger and either jump or release.
+//   2. window's touchend fired on EVERY finger lift — including the
+//      touch-look finger — so lifting the OTHER finger reset the
+//      joystick's `on=false`, snapping joyDX/joyDY to 0.
+// Fix: track the specific touch identifier captured at touchstart, and
+// only react to events for that identifier.
+//
+// Slack zone: per user request, drags up to 1.5× R (50% beyond the
+// visible circle) still register as "full deflection" rather than
+// snapping the joystick off. Beyond 1.5× R the joystick auto-releases.
 (()=>{
   const joy=document.getElementById('joy'),knob=document.getElementById('jknob');
-  let on=false,bx=88,by=88;const R=51;
+  const R=51;       // visible joystick radius (px, post-CSS scaling)
+  const SLACK=R*1.5; // outer "still tracking" radius (50% beyond visible)
   const C=88;
-  joy.addEventListener('touchstart',e=>{e.preventDefault();on=true;
-    const r=joy.getBoundingClientRect(),t=e.touches[0];bx=t.clientX-r.left;by=t.clientY-r.top;
+  let on=false, jId=-1, bx=88, by=88;
+  function resetKnob(){
+    on=false; jId=-1; joyDX=0; joyDY=0;
+    knob.style.left=C+'px'; knob.style.top=C+'px';
+  }
+  joy.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    if(on) return; // already engaged — ignore secondary fingers on the pad
+    const r=joy.getBoundingClientRect();
+    for(const t of e.changedTouches){
+      // First new finger that landed on the joystick element wins.
+      jId = t.identifier;
+      on = true;
+      bx = t.clientX - r.left;
+      by = t.clientY - r.top;
+      break;
+    }
   },{passive:false});
-  window.addEventListener('touchmove',e=>{if(!on)return;
-    const r=joy.getBoundingClientRect(),t=e.touches[0];
-    let dx=(t.clientX-r.left)-bx,dy=(t.clientY-r.top)-by;
-    const l=Math.sqrt(dx*dx+dy*dy);if(l>R){dx*=R/l;dy*=R/l;}
-    knob.style.left=(C+dx)+'px';knob.style.top=(C+dy)+'px';
-    joyDX=dx/R;joyDY=dy/R;
+  window.addEventListener('touchmove',e=>{
+    if(!on) return;
+    // Find OUR specific touch in the current touch list (NOT touches[0],
+    // which becomes the touch-look finger when both are active and would
+    // jerk the joystick to wherever the other finger is).
+    let t=null;
+    for(const ct of e.touches){ if(ct.identifier===jId){ t=ct; break; } }
+    if(!t) return;
+    const r=joy.getBoundingClientRect();
+    let dx=(t.clientX-r.left)-bx, dy=(t.clientY-r.top)-by;
+    const l=Math.sqrt(dx*dx+dy*dy);
+    // Beyond the slack zone (1.5× R) the user has clearly slid OFF the
+    // joystick — release rather than keep moving forever, which feels
+    // worse than the previous "snap-to-zero on edge" bug.
+    if(l > SLACK){
+      resetKnob();
+      return;
+    }
+    // Visual knob clamps to R (inside the ring); the actual joyDX/joyDY
+    // magnitude clamps to 1.0 even inside the slack zone so the world
+    // motion speed doesn't double when the user drags well outside.
+    const visScale = (l > R) ? (R/l) : 1;
+    const vx = dx * visScale, vy = dy * visScale;
+    knob.style.left=(C+vx)+'px'; knob.style.top=(C+vy)+'px';
+    const inputScale = (l > R) ? (1/l) : (1/R); // both yield magnitude ≤ 1
+    joyDX = dx * inputScale;
+    joyDY = dy * inputScale;
+    // Final safety clamp in case of floating-point drift.
+    const jl = Math.sqrt(joyDX*joyDX + joyDY*joyDY);
+    if(jl > 1){ joyDX/=jl; joyDY/=jl; }
     if(layers.some(L=>L.type==='splat')) bumpSplatActive(2000);
   });
-  window.addEventListener('touchend',()=>{on=false;joyDX=0;joyDY=0;
-    knob.style.left=C+'px';knob.style.top=C+'px';});
+  window.addEventListener('touchend',e=>{
+    if(!on) return;
+    for(const t of e.changedTouches){
+      if(t.identifier===jId){ resetKnob(); break; }
+    }
+  });
+  window.addEventListener('touchcancel',e=>{
+    if(!on) return;
+    for(const t of e.changedTouches){
+      if(t.identifier===jId){ resetKnob(); break; }
+    }
+  });
 })();
 
 // ══════════════════════════════════════════════════
