@@ -11447,7 +11447,69 @@ document.addEventListener('DOMContentLoaded', () => {
 //    &renderDiv=N         — submit renderer.render() every Nth frame only
 //    &qual=N              — pin qualScale (bypass probe + watchdog)
 //    &stress=1|2          — auto-drive camera oscillation for repeatable load
+//    &testwalk=1          — auto-enter walk mode + force WASD pressed so the
+//                            avatar animation pipeline can be observed
+//                            end-to-end without a PLY scene loaded
 // ══════════════════════════════════════════════════
+// ?testwalk=1 — auto-test avatar animation pipeline
+if(/[?&]testwalk=1/.test(location.search)){
+  setTimeout(async ()=>{
+    console.info('[testwalk] forcing walk mode + W key for animation pipeline check');
+    try{
+      // Show HUD so walk mode is allowed to enter (it gates on HUD visibility)
+      const hud = document.getElementById('hud');
+      if(hud){ hud.style.opacity = '1'; hud.style.display = 'block'; }
+      const dz = document.getElementById('dz');
+      if(dz){ dz.style.display = 'none'; }
+      // Trigger walk mode entry
+      if(typeof _avatarWalkEnter === 'function'){
+        await _avatarWalkEnter();
+      } else {
+        const btn = document.getElementById('btnAvatarWalk');
+        if(btn) btn.click();
+      }
+      // Wait for avatar build to settle
+      await new Promise(r=>setTimeout(r, 1500));
+      // Simulate W key down by dispatching a real KeyboardEvent — the
+      // module-scope `keys` object is populated by the existing keydown
+      // handler at window.addEventListener('keydown', ...) around line 13566.
+      try{
+        const ev = new KeyboardEvent('keydown', {code:'KeyW', key:'w', bubbles:true});
+        window.dispatchEvent(ev);
+      }catch(_){}
+      // Log mixer state every 1s
+      let tick = 0;
+      const iv = setInterval(()=>{
+        tick++;
+        const wm = walkMode;
+        const a  = wm && wm.walkAction;
+        const snap = {
+          ev: 'walkProbe',
+          t: performance.now(),
+          tick,
+          active: wm && wm.active,
+          hasMixer: !!(wm && wm.mixer),
+          hasAction: !!a,
+          animSource: wm && wm.animSource,
+          actionWeight: a ? a.getEffectiveWeight() : null,
+          actionTimeScale: a ? a.getEffectiveTimeScale() : null,
+          actionTime: a ? a.time : null,
+          numBones: wm && wm.bones ? Object.keys(wm.bones).length : 0,
+        };
+        // Sample one bone's current quaternion so we can see whether the
+        // mixer is actually moving anything (vs frozen at rest)
+        if(wm && wm.bones && wm.bones.upperLegL){
+          const q = wm.bones.upperLegL.quaternion;
+          snap.upperLegL_q = [+q.x.toFixed(3),+q.y.toFixed(3),+q.z.toFixed(3),+q.w.toFixed(3)];
+        }
+        // POST directly to /__diag (works without ?diag=1)
+        try{ fetch('/__diag', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(snap)}).catch(()=>{}); }catch(_){}
+        if(tick >= 6) clearInterval(iv);  // 6 seconds of samples
+      }, 1000);
+    }catch(e){ console.warn('[testwalk] failed', e); }
+  }, 1500);
+}
 if(/[?&]diag=1/.test(location.search)) {
 // Capture page errors / promise rejections / console.error to /__diag so
 // silent failures (Spark throws inside its worker etc.) become visible.
