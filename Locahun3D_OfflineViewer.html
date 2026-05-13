@@ -2893,6 +2893,14 @@ const _ua = (navigator.userAgent || '');
 const _platform = (navigator.platform || '');
 const _isApple = /Mac|iPhone|iPad|iPod/.test(_platform) || /Mac OS X|iPhone|iPad/.test(_ua);
 const _isRetinaClass = (window.devicePixelRatio || 1) >= 1.75;
+// Explicit "is this an iPhone (or iPod) — i.e. a phone-sized iOS device,
+// NOT an iPad". Important because viewport-based detection (e.g. the
+// _splatPerfTier 'phone' classification, which keys off shortEdge < 700)
+// can mis-classify an iPad in Split View / Slide Over as a phone and
+// then apply phone-only memory-saving heuristics (auto stride 4 on
+// >300 MB files) to a device that doesn't need them. UA check is
+// reliable: iPad NEVER includes "iPhone"/"iPod" in its UA string.
+const _isIPhoneOrIPod = /iPhone|iPod/.test(_ua);
 
 // ── GPU capability detection ──
 // Probes WebGL for the underlying GPU string and classifies into:
@@ -6242,13 +6250,15 @@ function _splatStride(){
       if(v >= 1 && v <= 8) return v;
     }
   } catch(_){}
-  // Default on phone tier: stride 2 (auto-halve). iPhone Safari has a
-  // tab memory ceiling around 1.5 GB and crashes ("問題が繰り返し起き
-  // ました") when a typical 500–900 MB PLY is parsed + Spark builds
+  // Default on iPhone / iPod: stride 2 (auto-halve). iPhone Safari has
+  // a tab memory ceiling around 1.5 GB and crashes ("問題が繰り返し
+  // 起きました") when a typical 500–900 MB PLY is parsed + Spark builds
   // the SplatMesh; pre-halving the input buffer keeps peak memory
-  // safely under the cap. iPad and desktop default to stride 1
-  // (full resolution) and let the watchdog handle quality.
-  if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone') return 2;
+  // under the cap. iPad and desktop default to stride 1 (full
+  // resolution) and let the watchdog handle quality. The UA-based
+  // check is used in preference to _splatPerfTier === 'phone' (which
+  // is viewport-size-driven and mis-classifies iPad Split View).
+  if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod) return 2;
   return 1;
 }
 function subsamplePLY(rawBuf, stride){
@@ -6324,15 +6334,16 @@ function subsampleSplatFile(rawBuf, stride){
 }
 // Dispatch helper — call before handing rawBuf to Spark.
 // Base stride comes from `_splatStride()` (localStorage preference,
-// defaulting to 2 on phone tier and 1 elsewhere). On phone tier we
+// defaulting to 2 on iPhone / iPod and 1 elsewhere). On iPhone we
 // also auto-escalate to stride 4 for files larger than 300 MB so the
-// iPhone Safari tab memory ceiling (~1.5 GB) isn't blown by big
-// scans that triple-buffer through Spark's parse + packedSplats +
-// accumulator pipeline. The >600 MB → stride 8 step is intentionally
-// not included; users with extreme files should convert to SPZ.
+// Safari tab memory ceiling (~1.5 GB) isn't blown by big scans that
+// triple-buffer through Spark's parse + packedSplats + accumulator
+// pipeline. iPad is NOT subject to this escalation even when Split
+// View shrinks the viewport — the check uses UA (_isIPhoneOrIPod)
+// rather than the viewport-based _splatPerfTier classification.
 function maybeDecimateSplatBuffer(rawBuf, ext){
   let stride = _splatStride();
-  if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone' &&
+  if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod &&
      (ext === 'ply' || ext === 'splat') && rawBuf && rawBuf.byteLength){
     if(rawBuf.byteLength > 300 * 1024 * 1024){
       stride = Math.max(stride, 4);
@@ -6757,13 +6768,13 @@ async function loadSplatFile(file){
     // "問題が繰り返し起きました" when a typical >250 MB PLY is parsed +
     // Spark builds the SplatMesh. Show a warning toast up front so the
     // user knows what's about to happen and has the option to cancel and
-    // use a smaller SPZ instead. Threshold is intentionally conservative:
-    // file size is 1/3rd of peak memory once Spark's accumulator and
-    // packedSplats buffers are allocated.
-    if(typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone' &&
+    // use a smaller SPZ instead. Gated on _isIPhoneOrIPod (UA, not the
+    // viewport-driven _splatPerfTier) so iPads aren't false-positive'd
+    // in Split View / narrow windows.
+    if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod &&
        (ext === 'ply' || ext === 'splat') && file && file.size > 250*1024*1024){
       const mb = Math.round(file.size / 1024 / 1024);
-      console.warn('[Locahun] Large file on phone tier (' + mb + ' MB) — risk of tab crash');
+      console.warn('[Locahun] Large file on iPhone (' + mb + ' MB) — risk of tab crash');
       if(typeof showUndoToast === 'function'){
         showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
       }
