@@ -64,23 +64,22 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
   color:rgba(160,160,160,.55);border-radius:4px;padding:2px 8px;font-size:.66em;
   cursor:pointer;transition:all .15s;letter-spacing:.04em;white-space:nowrap;
 }
-/* Error / bug report — now embedded INSIDE the update-check button as a
-   small inline icon (.tb-report-inline). PC only; hidden on touch devices,
-   which have their own native mail flow we don't want triggered from a
-   tiny topbar icon. Hover state uses a soft red so it remains clearly
-   distinguishable as an "issue" action even nested inside the neutral
-   update-check button. */
-#topbar .tb-update .tb-report-inline{
-  display:inline-block;margin-right:6px;padding:0 4px;
-  border-radius:3px;cursor:pointer;transition:background .15s,color .15s;
-  color:rgba(200,200,200,.65);font-size:1em;line-height:1;
-  vertical-align:baseline;user-select:none;
+/* Error / bug report — standalone topbar button (was previously nested
+   INSIDE the update-check button, but the parent's state classes
+   (is-checking/.55 opacity, is-offline, has-update pulse) dimmed the icon
+   to near-invisible. Also: <span onclick> inside <button> is invalid HTML.
+   Now a separate sibling: its visibility never depends on update state.
+   PC only; hidden on touch devices (their native mail flow handles this). */
+#topbar .tb-bug{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  color:rgba(220,220,220,.85);border-radius:4px;padding:2px 7px;font-size:.78em;
+  cursor:pointer;transition:all .15s;line-height:1;flex-shrink:0;
 }
-#topbar .tb-update .tb-report-inline:hover{
-  background:rgba(255,90,80,.22);color:#ffd0cb;
+#topbar .tb-bug:hover{
+  background:rgba(255,90,80,.22);color:#ffd0cb;border-color:rgba(255,90,80,.45);
 }
 @media (pointer:coarse) and (any-hover:none){
-  #topbar .tb-update .tb-report-inline{display:none !important;}
+  #topbar .tb-bug{display:none !important;}
 }
 #topbar .tb-update:hover{background:rgba(255,255,255,.1);color:#D8D8D8;}
 #topbar .tb-update.is-latest{background:rgba(80,200,120,.06);border-color:rgba(80,200,120,.22);
@@ -1136,10 +1135,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
   </div>
   <button class="tb-home" onclick="resetToHome()" id="tb-home-btn">LOCAHUN 3D</button>
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-end">
+    <button class="tb-bug" id="tb-report-btn" onclick="reportBug()"
+      title="エラー / 不具合を開発者に報告">🐛</button>
     <button class="tb-update" id="tb-update-btn" onclick="checkForUpdate(true)"
-      title="更新を確認"><span class="tb-report-inline" id="tb-report-btn"
-        onclick="event.stopPropagation();reportBug();return false;"
-        title="エラー / 不具合を開発者に報告">🐛</span>🔄 <span id="tb-update-lbl">更新確認</span></button>
+      title="更新を確認">🔄 <span id="tb-update-lbl">更新確認</span></button>
     <span class="tb-integrity" id="tb-integrity" hidden></span>
     <button class="tb-lang" id="tb-lang-btn" onclick="toggleLang()">EN</button>
   </div>
@@ -2370,10 +2369,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:sys
     <span class="dz-pc-hint">X 90°</span>
   </label>
   <button class="demo-btn" id="emptyBtn">📄 <span id="dz-empty-text">空プロジェクトを開く</span></button>
-  <button class="demo-btn" id="dz-manual-btn" onclick="openManual()"
-    style="background:rgba(255,180,84,.16);border-color:rgba(255,180,84,.45);color:#ffe4b3">
-    📖 <span id="dz-manual-text">ユーザーマニュアルを開く</span>
-  </button>
   <button class="demo-btn" id="dz-load-zip-btn" onclick="loadProjectZip()"
     style="border-color:rgba(255,180,84,.3);color:rgba(255,180,84,.8)">
     📦 <span id="dz-zip-text">プロジェクトを開く (.zip)</span>
@@ -2872,6 +2867,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // Also reflect the auto-selected preset in the in-panel button row.
   document.querySelectorAll('#quality-panel #qbtns button')
     .forEach((b,i)=>b.classList.toggle('on', i===qualIdx));
+  // ── iOS / iPadOS file-picker fix ──
+  // iOS Files app maps `accept=".splat"`-style extension hints to UTI
+  // (Uniform Type Identifier) entries. The OS has no UTI for our domain
+  // formats (.splat / .ply / .spz / .ksplat), so files of those types get
+  // greyed out / unselectable even when they exist locally. .zip / .glb /
+  // .jpg etc. pass because they are registered system UTIs.
+  // Fix: on iOS/iPadOS, clear the `accept` attribute on the data-import
+  // inputs so all files are selectable. Desktop UX keeps the filter.
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if(isIOS){
+    for(const id of ['lfi-any','lfi-splat','lfi-obj','fi']){
+      const inp = document.getElementById(id);
+      if(inp) inp.removeAttribute('accept');
+    }
+  }
 }, { once:true });
 // _heavyDisplay drives renderer construction (AA off, PR_CAP tighter, lower
 // shadow-map resolution). Was previously set for weak laptop GPUs and Intel
@@ -7992,8 +8004,24 @@ window.removeLayer=function(id){
     _detachLayerSceneAttachments(d);
     const idx=layers.indexOf(d); if(idx>=0) layers.splice(idx,1);
   }
-  if(toDelete.some(d=>d.id===selectedLayerId)) selectedLayerId=null;
+  const _deletedSelected = toDelete.some(d=>d.id===selectedLayerId);
+  if(_deletedSelected) selectedLayerId=null;
   if(window.selectedLayerIds) for(const d of toDelete) window.selectedLayerIds.delete(d.id);
+  // ── Hide singleton gizmos that the per-frame loop won't refresh anymore ──
+  // animate() gates `updateLayerPivot()` on `selectedLayerId != null`, and
+  // `_updateBoneRotateGizmo()` on `_activeFigureCount > 0`. After deleting the
+  // last selected / last figure layer, those gates close immediately and the
+  // singleton's `visible=true` from the previous frame would otherwise persist.
+  if(_deletedSelected){
+    if(typeof lpv !== 'undefined' && lpv && lpv.group) lpv.group.visible = false;
+    if(typeof _boneRotateGizmo !== 'undefined' && _boneRotateGizmo) _boneRotateGizmo.visible = false;
+  }
+  // If any deleted layer was a figure, also kill the bone-rotate ring (it's a
+  // singleton tied to whichever figure was last selected; the gate will close
+  // when _activeFigureCount drops to 0 below).
+  if(toDelete.some(d=>d.type==='figure')){
+    if(typeof _boneRotateGizmo !== 'undefined' && _boneRotateGizmo) _boneRotateGizmo.visible = false;
+  }
   renderLayerList();
   renderTransformPanel();
   showUndoToast(T('deleted-undo'));
