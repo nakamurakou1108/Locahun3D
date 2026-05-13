@@ -1058,6 +1058,22 @@ body{position:fixed;top:0;left:0;}
       <span style="font-size:.75em;color:#686868" id="qp-lbl-show">表示</span>
     </label>
   </div>
+  <!-- ── Low-poly toggle ── halves the rendered splat count by decimating
+       the PLY / SPLAT buffer at load time. SPZ / KSPLAT are proprietary
+       compressed formats so the toggle is a no-op there. Requires reload
+       of the scene to apply (the SplatMesh is immutable post-construction
+       in Spark 2.0.0). -->
+  <div class="qrow" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0">
+    <label id="qp-lbl-lowpoly" style="font-size:.78em;color:#686868;line-height:1.25">
+      <span id="qp-lbl-lowpoly-main">ポリゴン半減</span>
+      <span id="qp-lbl-lowpoly-hint" style="display:block;font-size:.72em;color:#404040">PLY/SPLAT のみ・要再読み込み</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+      <input type="checkbox" id="lowpoly-toggle" onchange="setLowPolyMode(this.checked)"
+        style="accent-color:#D8D8D8;cursor:pointer">
+      <span style="font-size:.75em;color:#686868" id="qp-lbl-lowpoly-on">ON</span>
+    </label>
+  </div>
   <div class="qrow" style="display:flex;align-items:center;gap:6px;margin:6px 0">
     <label id="qp-lbl-fov" style="font-size:.78em;color:#686868;min-width:34px">FOV</label>
     <div class="qbtns" id="fovbtns" style="display:flex;gap:4px;flex:1">
@@ -6098,6 +6114,146 @@ function estimatePLYStats(buffer,flipYZ) {
 
 
 // ══════════════════════════════════════════════════
+//  SPLAT DECIMATION  (user-toggled "low-poly mode")
+// ══════════════════════════════════════════════════
+// Spark 2.0.0 doesn't expose any live-toggle knob to cap splat count after
+// SplatMesh construction (probed exhaustively — see L2984 comment), so the
+// only way to halve the rendered count for iPad / iPhone fps relief is to
+// decimate the input buffer BEFORE handing it to Spark. We do this for the
+// formats whose binary layout we own (PLY + SPLAT). SPZ + KSPLAT use
+// proprietary compression and pass through unchanged — the toggle is a no-op
+// for those formats, and the UI label warns the user about that.
+//
+// IMPORTANT honesty: halving splat count on iOS does NOT halve frame time.
+// The iOS Safari compositor is the dominant bottleneck for the AR / heavy
+// scene case (GPU shows ~3 % load at 8 fps), so VRAM + sort-worker pressure
+// drop but rAF is still gated by the compositor. Expect roughly +30-60 %
+// fps in real scenes, not 2×.
+function _splatStride(){
+  // Read user preference from localStorage. 1 = full quality, 2 = halve,
+  // 3 = quarter (kept available behind the same flag for power users).
+  try {
+    const v = parseInt(localStorage.getItem('locahun_splat_stride') || '1', 10);
+    if(v >= 2 && v <= 8) return v;
+  } catch(_){}
+  return 1;
+}
+function subsamplePLY(rawBuf, stride){
+  if(stride <= 1) return rawBuf;
+  try {
+    const hdrMax = Math.min(rawBuf.byteLength, 65536);
+    const hdrText = new TextDecoder().decode(new Uint8Array(rawBuf, 0, hdrMax));
+    if(!hdrText.startsWith('ply')) return null;
+    const endTag = 'end_header\n';
+    const endIdx = hdrText.indexOf(endTag);
+    if(endIdx < 0) return null;
+    const headerEnd = endIdx + endTag.length;
+    let vCount = 0, inVert = false, perVertStride = 0;
+    for(const line of hdrText.slice(0, endIdx).split('\n')){
+      const p = line.trim().split(/\s+/);
+      if(p[0] === 'element'){
+        inVert = (p[1] === 'vertex');
+        if(inVert) vCount = parseInt(p[2]) || 0;
+      } else if(p[0] === 'property' && inVert){
+        const sz = (p[1]==='double'||p[1]==='float64')?8 :
+                   (p[1]==='uchar'||p[1]==='uint8')?1 :
+                   (p[1]==='short'||p[1]==='int16'||p[1]==='ushort'||p[1]==='uint16')?2 : 4;
+        perVertStride += sz;
+      }
+    }
+    if(!vCount || !perVertStride) return null;
+    const keepCount = Math.ceil(vCount / stride);
+    // Rewrite the `element vertex N` line so Spark's parser sees the new
+    // count. Keep all other header lines exactly as-is.
+    const newHdrText = hdrText.slice(0, endIdx).replace(
+      /element\s+vertex\s+\d+/,
+      'element vertex ' + keepCount
+    ) + endTag;
+    const newHdrBytes = new TextEncoder().encode(newHdrText);
+    const outBytes = new Uint8Array(newHdrBytes.length + keepCount * perVertStride);
+    outBytes.set(newHdrBytes, 0);
+    const srcBytes = new Uint8Array(rawBuf);
+    let outOff = newHdrBytes.length;
+    for(let i = 0; i < vCount; i += stride){
+      const srcOff = headerEnd + i * perVertStride;
+      if(srcOff + perVertStride > rawBuf.byteLength) break;
+      outBytes.set(srcBytes.subarray(srcOff, srcOff + perVertStride), outOff);
+      outOff += perVertStride;
+    }
+    console.info('[Locahun][Decimate] PLY '+vCount+' → '+keepCount+' splats (stride '+stride+')');
+    return outBytes.buffer;
+  } catch(e){
+    console.warn('[subsamplePLY] failed, using original buffer:', e);
+    return null;
+  }
+}
+// .splat = fixed 32-byte rows (pos×3 float + scale×3 float + color×4 byte +
+// quat×4 byte). No header to patch; just take every Nth row.
+function subsampleSplatFile(rawBuf, stride){
+  if(stride <= 1) return rawBuf;
+  try {
+    const rows = Math.floor(rawBuf.byteLength / 32);
+    if(rows <= 1) return rawBuf;
+    const keepCount = Math.ceil(rows / stride);
+    const outBytes = new Uint8Array(keepCount * 32);
+    const srcBytes = new Uint8Array(rawBuf);
+    let outOff = 0;
+    for(let i = 0; i < rows; i += stride){
+      outBytes.set(srcBytes.subarray(i * 32, (i + 1) * 32), outOff);
+      outOff += 32;
+    }
+    console.info('[Locahun][Decimate] SPLAT '+rows+' → '+keepCount+' splats (stride '+stride+')');
+    return outBytes.buffer;
+  } catch(e){
+    console.warn('[subsampleSplatFile] failed:', e);
+    return null;
+  }
+}
+// Dispatch helper — call before handing rawBuf to Spark.
+function maybeDecimateSplatBuffer(rawBuf, ext){
+  const stride = _splatStride();
+  if(stride <= 1) return rawBuf;
+  if(ext === 'ply'){
+    const out = subsamplePLY(rawBuf, stride);
+    return out || rawBuf;
+  }
+  if(ext === 'splat'){
+    const out = subsampleSplatFile(rawBuf, stride);
+    return out || rawBuf;
+  }
+  // SPZ / KSPLAT pass through (proprietary compressed formats).
+  return rawBuf;
+}
+
+// User-facing toggle: stride 2 (halve) on, stride 1 (full) off. Persisted
+// to localStorage so the choice survives reload. The toggle itself doesn't
+// re-decimate currently-loaded splats — Spark 2.0.0 has no live API for
+// that — so a toast asks the user to reopen the file. Project-ZIP reload
+// will pick up the new stride automatically since cached _rawBuffer is
+// re-fed through maybeDecimateSplatBuffer() on restore.
+window.setLowPolyMode = function(on){
+  try {
+    localStorage.setItem('locahun_splat_stride', on ? '2' : '1');
+  } catch(_){}
+  const cb = document.getElementById('lowpoly-toggle');
+  if(cb && cb.checked !== !!on) cb.checked = !!on;
+  // Inform the user — fairness about what they're getting.
+  if(typeof showUndoToast === 'function'){
+    if(on){
+      showUndoToast(T('lowpoly-on') || '🎚 ポリゴン半減 ON — シーンを再読み込みすると反映されます');
+    } else {
+      showUndoToast(T('lowpoly-off') || '🎚 ポリゴン半減 OFF — シーンを再読み込みすると反映されます');
+    }
+  }
+};
+// Initialize the toggle checkbox to match the persisted state on first
+// render so refreshing the page keeps the user's choice visible.
+document.addEventListener('DOMContentLoaded', () => {
+  const cb = document.getElementById('lowpoly-toggle');
+  if(cb) cb.checked = (_splatStride() >= 2);
+}, { once:true });
+
+// ══════════════════════════════════════════════════
 //  ORIENTATION
 // ══════════════════════════════════════════════════
 function applyOrient(sm,flipped){sm.quaternion.set(flipped?1:0,0,0,flipped?0:1);}
@@ -6324,12 +6480,17 @@ async function loadSplatFile(file){
 
     setMsg(T('building-3dgs')); setBar(50);
 
+    // Apply the user-selectable "low-poly" decimation BEFORE handing the
+    // buffer to Spark. No-op when stride === 1 (full quality). Cached PLY/
+    // SPLAT formats decimate cleanly; SPZ / KSPLAT pass through unchanged.
+    const _splatBytes = maybeDecimateSplatBuffer(rawBuf, ext);
+
     // Spark 2.x: feed the loader the ArrayBuffer directly via `fileBytes`.
     // Going through a blob: URL was observed to hang indefinitely
     // ("pending" forever on large 3DGS PLY scans), and large buffers also
     // round-trip badly through the loader's Worker fetch. fileBytes skips
     // both. fileType + fileName let Spark pick the right parser.
-    const opts={fileBytes:rawBuf, fileName:file.name, ...SPARK_QUALITY_OPTS};
+    const opts={fileBytes:_splatBytes, fileName:file.name, ...SPARK_QUALITY_OPTS};
     // ?lod=1 — allow Spark to build the SplatMesh with its runtime LOD
     // machinery ON (overrides SPARK_QUALITY_OPTS for this load only).
     if(/[?&]lod=1/.test(location.search)){
@@ -8584,6 +8745,11 @@ const I18N = {
   'qt-high':'高',
   'qt-ultra':'最高',
   'qp-perf-t':'📊 処理能力モニター',
+  'qp-lbl-lowpoly-main':'ポリゴン半減',
+  'qp-lbl-lowpoly-hint':'PLY/SPLAT のみ・要再読み込み',
+  'qp-lbl-lowpoly-on':'ON',
+  'lowpoly-on':'🎚 ポリゴン半減 ON — シーンを再読み込みすると反映されます',
+  'lowpoly-off':'🎚 ポリゴン半減 OFF — シーンを再読み込みすると反映されます',
   'qp-l-frame':'フレーム時間',
   'qp-l-gpu':'GPU 負荷',
   'qp-l-head':'余剰 (ヘッドルーム)',
@@ -8690,6 +8856,11 @@ const I18N = {
   'qt-high':'High',
   'qt-ultra':'Ultra',
   'qp-perf-t':'📊 Performance Monitor',
+  'qp-lbl-lowpoly-main':'Halve splats',
+  'qp-lbl-lowpoly-hint':'PLY/SPLAT only — reload to apply',
+  'qp-lbl-lowpoly-on':'ON',
+  'lowpoly-on':'🎚 Halve splats ON — reload the scene to apply',
+  'lowpoly-off':'🎚 Halve splats OFF — reload the scene to apply',
   'qp-l-frame':'Frame Time',
   'qp-l-gpu':'GPU Load',
   'qp-l-head':'Headroom',
@@ -10891,8 +11062,10 @@ async function loadAdditionalSplat(file){
     setMsg(T('loading-file')); setBar(15);
     const rawBuf=await file.arrayBuffer();  // read for caching
     setBar(45);
+    // Apply user-selectable decimation (PLY/SPLAT only; SPZ/KSPLAT pass through).
+    const _splatBytes = maybeDecimateSplatBuffer(rawBuf, ext);
     // Spark 2.x: fileBytes path (see loadSplatFile comment above).
-    const opts={fileBytes:rawBuf, fileName:file.name, ...SPARK_QUALITY_OPTS};
+    const opts={fileBytes:_splatBytes, fileName:file.name, ...SPARK_QUALITY_OPTS};
     if(ext==='splat') opts.fileType=SplatFileType.SPLAT;
     else if(ext==='ksplat') opts.fileType=SplatFileType.KSPLAT;
     else if(ext==='ply') opts.fileType=SplatFileType.PLY;
