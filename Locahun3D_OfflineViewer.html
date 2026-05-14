@@ -2474,6 +2474,11 @@ body{position:fixed;top:0;left:0;}
 #btnCamTool.on{background:rgba(255,180,84,.22);border-color:rgba(255,180,84,.55);
   color:#ffe4b3;}
 #btnAvatarWalk.on{background:rgba(120,200,255,.22)!important;border-color:rgba(140,210,255,.6)!important;color:#cbe8ff!important;}
+/* Avatar walk button intentionally hidden — feature is being held back
+   for a follow-up revision. The element + JS handlers (toggleAvatarWalk,
+   walkMode state, animation clips, etc.) all stay in place so re-
+   enabling is a one-line CSS removal later. */
+#btnAvatarWalk{display:none !important;}
 /* AR button — only shown on actual touch hardware (phones & tablets);
    desktop hides it because passthrough AR needs a rear camera + gyro. */
 @media (pointer:coarse) and (any-hover:none){
