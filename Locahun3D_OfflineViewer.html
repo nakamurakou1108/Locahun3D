@@ -6986,7 +6986,15 @@ async function loadSplatFile(file){
     // Apply the user-selectable "low-poly" decimation BEFORE handing the
     // buffer to Spark. No-op when stride === 1 (full quality). Cached PLY/
     // SPLAT formats decimate cleanly; SPZ / KSPLAT pass through unchanged.
-    const _splatBytes = maybeDecimateSplatBuffer(rawBuf, ext);
+    // iPad SKIPS load-time decimation entirely: even if the user has the
+    // polygon-halve toggle ON in localStorage, the initial load runs at
+    // full quality. The toggle then becomes a post-load reload trigger
+    // (reloadAllSplatLayers still respects the user preference) instead
+    // of a load-time gate. iPhone / desktop keep the gate so big files
+    // benefit from the seeded preference immediately.
+    const _splatBytes = (typeof _isIPad !== 'undefined' && _isIPad)
+                        ? rawBuf
+                        : maybeDecimateSplatBuffer(rawBuf, ext);
 
     // Spark 2.x: feed the loader the ArrayBuffer directly via `fileBytes`.
     // Going through a blob: URL was observed to hang indefinitely
@@ -11692,7 +11700,10 @@ async function loadAdditionalSplat(file){
     const rawBuf=await file.arrayBuffer();  // read for caching
     setBar(45);
     // Apply user-selectable decimation (PLY/SPLAT only; SPZ/KSPLAT pass through).
-    const _splatBytes = maybeDecimateSplatBuffer(rawBuf, ext);
+    // iPad bypasses load-time decimation — same rationale as loadSplatFile.
+    const _splatBytes = (typeof _isIPad !== 'undefined' && _isIPad)
+                        ? rawBuf
+                        : maybeDecimateSplatBuffer(rawBuf, ext);
     // Spark 2.x: fileBytes path (see loadSplatFile comment above).
     const opts={fileBytes:_splatBytes, fileName:file.name, ...SPARK_QUALITY_OPTS};
     if(ext==='splat') opts.fileType=SplatFileType.SPLAT;
