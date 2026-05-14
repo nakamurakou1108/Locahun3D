@@ -934,30 +934,11 @@ body{position:fixed;top:0;left:0;}
     top:30px;right:6px;padding:2px 6px;font-size:.55em;gap:3px;line-height:1.2;
   }
 }
-/* iPhone-only (narrow OR short viewport that isn't an iPad) — hoist
-   the カメラリセット / アバター歩行 / AR row ALL THE WAY UP into the
-   topbar's vertical band so the 3-D view starts immediately below
-   the 30 px topbar. We hide the LOCAHUN 3D home button on iPhone to
-   free up the topbar centre for these action buttons. The user can
-   still go home via the share-sheet "completed" link or by reopening
-   the file. iPad keeps its own home button because viewport > 600 px
-   doesn't enter the smartphone media query. */
-@media (pointer:coarse) and (any-hover:none) and (max-width: 600px),
-       (pointer:coarse) and (any-hover:none) and (max-height: 500px){
-  #view-tl-btns{
-    top:3px !important;        /* sit inside the 30 px topbar */
-    z-index:210;               /* over the topbar (which is z-index 200) */
-  }
-  #view-tl-btns > button,
-  #view-tl-btns button{
-    /* Compact enough to share the topbar row with the side widgets. */
-    padding:1px 5px !important;font-size:.5em !important;
-    background:rgba(40,40,42,.92) !important;
-  }
-  /* Hide the centred LOCAHUN 3D button on iPhone so it doesn't collide
-     with the centred action row. */
-  #topbar .tb-home{display:none !important;}
-}
+/* (Previous iPhone-only "hoist action row into topbar" override removed
+   because the buttons ended up overlapping the topbar widgets and the
+   user couldn't see them clearly. The action row now sits flush below
+   the 30 px topbar on iPhone via the smartphone-media-query rule above
+   — same placement as iPad / other touch devices.) */
 
 </style>
 </head>
