@@ -16574,12 +16574,67 @@ window.reportBug = function(){
   }
 };
 
+// Download the freshest viewer HTML as Locahun3D_OfflineViewer.html.
+// Fetches the same origin the page was served from (or the manifest's
+// trusted URL when running offline-bundled). Used by checkForUpdate()
+// when the user clicks the "🔔 新版あり" button — they get the new
+// HTML in their Downloads folder so they can replace their local copy
+// without manually navigating to GitHub.
+async function _downloadLatestViewerHtml(target){
+  try {
+    // Resolve the HTML source URL. Priority:
+    //   1. manifest's trusted url (when an offline-bundled HTML is
+    //      running against a remote update server).
+    //   2. location.href (when the running page IS the deployed HTML).
+    let src = (target && /^https?:/.test(target)) ? target : location.href;
+    // If the URL is a directory (ends with / or query / hash only),
+    // append the canonical HTML filename so we hit the actual file.
+    if(/\/(?:[?#].*)?$/.test(src) || !/Locahun3D_OfflineViewer\.html(?:[?#]|$)/i.test(src)){
+      // Strip trailing slash, then append the canonical file path.
+      const base = src.replace(/\/+$/,'');
+      src = base + '/Locahun3D_OfflineViewer.html';
+    }
+    const res = await fetch(src, { cache: 'no-store' });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const dl = document.createElement('a');
+    dl.href = URL.createObjectURL(blob);
+    dl.download = 'Locahun3D_OfflineViewer.html';
+    document.body.appendChild(dl);
+    dl.click();
+    dl.remove();
+    setTimeout(()=>URL.revokeObjectURL(dl.href), 5000);
+    if(typeof showUndoToast === 'function'){
+      showUndoToast(window._lang === 'en'
+        ? '⬇ Downloaded latest Locahun3D_OfflineViewer.html'
+        : '⬇ 最新版 Locahun3D_OfflineViewer.html をダウンロードしました');
+    }
+    return true;
+  } catch(e){
+    console.warn('[update] HTML download failed:', e);
+    if(typeof showUndoToast === 'function'){
+      showUndoToast(window._lang === 'en'
+        ? '⚠ HTML download failed — opening release page instead'
+        : '⚠ HTML ダウンロード失敗 — リリースページを開きます');
+    }
+    return false;
+  }
+}
+
 window.checkForUpdate = async function(userInitiated){
-  // If new version already detected, second click opens the release URL.
+  // If new version already detected, second click downloads the freshest
+  // viewer HTML AND opens the release URL (so the user can see release
+  // notes / sha hash). Download is best-effort; release page open is the
+  // reliable fallback.
   if(_updateState.status === 'available'){
     // Only follow data.url if it passed origin validation; else fall back.
     const target = _updateState.urlTrusted ? _updateState.url : RELEASES_FALLBACK_URL;
-    if(userInitiated && target) window.open(target, '_blank', 'noopener,noreferrer');
+    if(userInitiated){
+      // Fire HTML download first (so the user gets the file even if they
+      // then dismiss the release page). Don't block on its result.
+      _downloadLatestViewerHtml(_updateState.urlTrusted ? _updateState.url : null);
+      if(target) window.open(target, '_blank', 'noopener,noreferrer');
+    }
     return;
   }
   if(_updateState.status === 'checking') return;
