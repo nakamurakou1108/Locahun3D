@@ -13959,12 +13959,34 @@ window.saveProjectZip = async function(){
     };
     files['project.json']=fflate.strToU8(JSON.stringify(project,null,2));
 
+    // ── Bundle the viewer HTML itself for fully-offline playback ──
+    // The saved ZIP becomes a self-contained archive: extract it on
+    // any machine, open Locahun3D_OfflineViewer.html in a browser, and
+    // the scene is viewable without any network. Best-effort fetch —
+    // if the request fails (e.g. file:// origin + strict CORS) we just
+    // skip the HTML inclusion and the rest of the save still succeeds.
+    let _bundledHtml = false;
+    try {
+      const res = await fetch(location.href, { cache: 'no-store' });
+      if(res.ok){
+        const htmlText = await res.text();
+        files['Locahun3D_OfflineViewer.html'] = fflate.strToU8(htmlText);
+        _bundledHtml = true;
+      } else {
+        console.warn('[saveZIP] viewer HTML fetch returned', res.status, '— skipping bundle');
+      }
+    } catch(e){
+      console.warn('[saveZIP] viewer HTML fetch threw — skipping bundle:', e);
+    }
+
     // Create ZIP
     const zipEntries={};
     for(const [path,data] of Object.entries(files)){
-      // Use compression level 0 (store) for binary data, 6 for JSON
-      const isJson=path.endsWith('.json');
-      zipEntries[path]=[data,{level:isJson?6:0}];
+      // Compress text-y files (JSON, HTML) at level 6; raw splat / GLB /
+      // model binaries are usually already incompressible so stay at 0
+      // (store) to keep zipSync fast on large scenes.
+      const isCompressible = path.endsWith('.json') || path.endsWith('.html');
+      zipEntries[path]=[data,{level:isCompressible?6:0}];
     }
     const zipBuf = fflate.zipSync(zipEntries);
     const blob=new Blob([zipBuf],{type:'application/zip'});
@@ -13975,13 +13997,20 @@ window.saveProjectZip = async function(){
     URL.revokeObjectURL(a.href);
 
     const missing=serialized.filter(e=>e.missing).length;
-    const fileCount=Object.keys(files).length-1; // exclude project.json
+    // fileCount = everything except project.json (and the bundled HTML
+    // when present — we mention it separately so the user knows their
+    // ZIP is offline-playable).
+    let fileCount=Object.keys(files).length-1; // exclude project.json
+    if(_bundledHtml) fileCount--;              // exclude bundled HTML
     const _en=window._lang==='en';
+    const _offlineNote = _bundledHtml
+      ? (_en ? ' · offline-playable' : ' · オフライン再生対応')
+      : '';
     showUndoToast(missing>0
       ?(_en?`⚠ ZIP save: ${missing} file(s) uncached (reload then save)`
            :`⚠ ZIP保存: ${missing}件はファイル未キャッシュ（再読込後に保存してください）`)
-      :(_en?`✅ ZIP saved (${fileCount} file${fileCount===1?'':'s'} + project.json)`
-           :`✅ ZIP保存完了 (${fileCount}ファイル + project.json)`));
+      :(_en?`✅ ZIP saved (${fileCount} file${fileCount===1?'':'s'} + project.json${_offlineNote})`
+           :`✅ ZIP保存完了 (${fileCount}ファイル + project.json${_offlineNote})`));
   } catch(e){ console.error(e); showUndoToast(T('zip-fail')+e.message); }
 };
 
