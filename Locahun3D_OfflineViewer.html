@@ -6995,6 +6995,20 @@ async function loadSplatFile(file){
     const _splatBytes = (typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)
                         ? maybeDecimateSplatBuffer(rawBuf, ext)
                         : rawBuf;
+    // Non-iPhone devices loaded the file at full quality. If a stale
+    // localStorage entry from a previous session still says stride=2
+    // (e.g. the user previously toggled ON, or the all-devices seed
+    // from an earlier build wrote '2'), the toggle UI would falsely
+    // display ON when no actual decimation occurred. Force-sync the
+    // persisted preference + every visible toggle to OFF so the user
+    // sees the truth: load was full, you can opt-in later.
+    if(!(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)){
+      try { localStorage.setItem('locahun_splat_stride', '1'); } catch(_){}
+      const _qpCb = document.getElementById('lowpoly-toggle');
+      if(_qpCb) _qpCb.checked = false;
+      const _hCb = document.getElementById('lph-cb');
+      if(_hCb) _hCb.checked = false;
+    }
 
     // Spark 2.x: feed the loader the ArrayBuffer directly via `fileBytes`.
     // Going through a blob: URL was observed to hang indefinitely
@@ -11707,6 +11721,15 @@ async function loadAdditionalSplat(file){
     const _splatBytes = (typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)
                         ? maybeDecimateSplatBuffer(rawBuf, ext)
                         : rawBuf;
+    // Force-sync the toggle UI to OFF on non-iPhone devices — see the
+    // same logic in loadSplatFile() above for rationale.
+    if(!(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)){
+      try { localStorage.setItem('locahun_splat_stride', '1'); } catch(_){}
+      const _qpCb = document.getElementById('lowpoly-toggle');
+      if(_qpCb) _qpCb.checked = false;
+      const _hCb = document.getElementById('lph-cb');
+      if(_hCb) _hCb.checked = false;
+    }
     // Spark 2.x: fileBytes path (see loadSplatFile comment above).
     const opts={fileBytes:_splatBytes, fileName:file.name, ...SPARK_QUALITY_OPTS};
     if(ext==='splat') opts.fileType=SplatFileType.SPLAT;
