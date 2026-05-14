@@ -91,6 +91,25 @@ body{position:fixed;top:0;left:0;}
   font-family:ui-monospace,Consolas,"JetBrains Mono",monospace;
   user-select:none;
 }
+/* Demo data download link — small understated pill under the changelog,
+   above the version label. Same letterbox-safe centred layout as the
+   home buttons above; doesn't need to scream because most users will
+   have their own data, but it's reachable for first-time tryers. */
+#dz .dz-demo-line{
+  margin-top:14px;text-align:center;
+}
+#dz .dz-demo-line a{
+  display:inline-block;padding:6px 14px;
+  background:rgba(120,200,255,.10);border:1px solid rgba(120,200,255,.35);
+  color:#cbe8ff;border-radius:7px;font-size:.8em;letter-spacing:.04em;
+  text-decoration:none;transition:all .15s;cursor:pointer;
+  font-family:'Noto Sans JP',ui-sans-serif,system-ui,sans-serif;
+}
+#dz .dz-demo-line a:hover{
+  background:rgba(120,200,255,.22);
+  border-color:rgba(140,210,255,.6);
+  color:#e6f4ff;
+}
 #topbar .tb-lang{
   background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
   color:rgba(160,160,160,.7);border-radius:4px;padding:2px 7px;font-size:.68em;
@@ -2553,6 +2572,16 @@ body.ar-active #dz{display:none !important;}
         </ul>
       </div>
     </div>
+  </div>
+  <!-- Demo data download. Links to a public R2-hosted sample .splat
+       so users can try the viewer without supplying their own scan. -->
+  <div class="dz-demo-line">
+    <a id="dz-demo-link"
+       href="https://pub-6fe11fc6301a424ba739695a7c4d2dd9.r2.dev/locahun3d_Demo_point_cloud.splat"
+       download="locahun3d_Demo_point_cloud.splat"
+       target="_blank" rel="noopener">
+      📥 <span id="dz-demo-text">デモデータをダウンロード</span>
+    </a>
   </div>
   <div class="dz-version-line">
     <span id="tb-version">v 0.0.1-alpha.2</span>
@@ -9612,7 +9641,7 @@ function applyI18n(){
     el.innerHTML=T(k);
   });
   // HUD labels
-  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-portalcam-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-recommended','em-h-title','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','lbl-walk','giz-pt-a','giz-pt-b','giz-pt-c','giz-world-a','giz-world-b','giz-world-c','giz-step','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
+  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-portalcam-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-recommended','em-h-title','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','dz-demo-text','lbl-walk','giz-pt-a','giz-pt-b','giz-pt-c','giz-world-a','giz-world-b','giz-world-c','giz-step','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.textContent=T(id);
   });
   // HUD info-box edit tooltip + dropzone titles
@@ -14874,6 +14903,7 @@ Object.assign(I18N.ja,{
   'cl-title':'更新履歴',
   'cl-sub':'αテスト版',
   'cl-tag-init':'初版',
+  'dz-demo-text':'デモデータをダウンロード',
   'lbl-walk':'アバター歩行',
   'lbl-walk-repos':'アバター再配置',
   'tt-walk':'アバター歩行モード（WASD でアバターを移動）',
@@ -15116,6 +15146,7 @@ Object.assign(I18N.en,{
   'cl-title':'Changelog',
   'cl-sub':'Alpha',
   'cl-tag-init':'Initial',
+  'dz-demo-text':'Download demo data',
   'lbl-walk':'Avatar Walk',
   'lbl-walk-repos':'Reposition Avatar',
   'tt-walk':'Avatar walk mode (WASD moves the avatar)',
