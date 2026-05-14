@@ -6939,17 +6939,17 @@ async function loadSplatFile(file){
         showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
       }
     }
-    // Big-file (> 300 MB) auto-tuning, device-specific:
-    //   • iPhone / desktop : seed localStorage = '2' so the polygon-halve
-    //       toggle visibly flips ON for future loads (iPhone additionally
-    //       escalates THIS load to stride 4 inside
-    //       maybeDecimateSplatBuffer to fit memory).
-    //   • iPad             : load at FULL quality, no seed. The universal
-    //       bottom-left hint card (showLowPolyHint, triggered later
-    //       below) is the only nudge the user gets.
+    // Big-file (> 300 MB) auto-tuning is now iPhone-only:
+    //   • iPhone : seed localStorage = '2' so the polygon-halve toggle
+    //       flips ON visibly + the load itself decimates (and the
+    //       stride-4 escalation inside maybeDecimateSplatBuffer kicks
+    //       in to keep peak memory under the 1.5 GB tab ceiling).
+    //   • iPad / laptop / desktop : NEVER seeded. Those devices load
+    //       the file at full quality. If users want to halve later they
+    //       can use the toggle (via the FPS badge → quality panel, or
+    //       the universal bottom-left hint card shown after first load).
     if((ext === 'ply' || ext === 'splat') && file && file.size > 300*1024*1024){
-      if(!(typeof _isIPad !== 'undefined' && _isIPad)){
-        // iPhone + desktop: seed the polygon-halve preference ON.
+      if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod){
         try {
           if(localStorage.getItem('locahun_splat_stride') == null){
             localStorage.setItem('locahun_splat_stride', '2');
@@ -6984,17 +6984,17 @@ async function loadSplatFile(file){
     setMsg(T('building-3dgs')); setBar(50);
 
     // Apply the user-selectable "low-poly" decimation BEFORE handing the
-    // buffer to Spark. No-op when stride === 1 (full quality). Cached PLY/
-    // SPLAT formats decimate cleanly; SPZ / KSPLAT pass through unchanged.
-    // iPad SKIPS load-time decimation entirely: even if the user has the
-    // polygon-halve toggle ON in localStorage, the initial load runs at
-    // full quality. The toggle then becomes a post-load reload trigger
-    // (reloadAllSplatLayers still respects the user preference) instead
-    // of a load-time gate. iPhone / desktop keep the gate so big files
-    // benefit from the seeded preference immediately.
-    const _splatBytes = (typeof _isIPad !== 'undefined' && _isIPad)
-                        ? rawBuf
-                        : maybeDecimateSplatBuffer(rawBuf, ext);
+    // buffer to Spark. ONLY iPhone / iPod runs decimation at load time;
+    // every other class of device (iPad, laptop, desktop) loads at FULL
+    // quality regardless of the toggle preference. The toggle then
+    // behaves as an explicit "halve now" rebuild (reloadAllSplatLayers
+    // continues to honour _splatStride() unconditionally), so users on
+    // capable hardware never sacrifice initial fidelity to a stale
+    // localStorage seed. iPhone keeps the gate because its tab memory
+    // ceiling (~1.5 GB) genuinely crashes on big files without it.
+    const _splatBytes = (typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)
+                        ? maybeDecimateSplatBuffer(rawBuf, ext)
+                        : rawBuf;
 
     // Spark 2.x: feed the loader the ArrayBuffer directly via `fileBytes`.
     // Going through a blob: URL was observed to hang indefinitely
@@ -11700,10 +11700,10 @@ async function loadAdditionalSplat(file){
     const rawBuf=await file.arrayBuffer();  // read for caching
     setBar(45);
     // Apply user-selectable decimation (PLY/SPLAT only; SPZ/KSPLAT pass through).
-    // iPad bypasses load-time decimation — same rationale as loadSplatFile.
-    const _splatBytes = (typeof _isIPad !== 'undefined' && _isIPad)
-                        ? rawBuf
-                        : maybeDecimateSplatBuffer(rawBuf, ext);
+    // Only iPhone runs load-time decimation — same rationale as loadSplatFile.
+    const _splatBytes = (typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)
+                        ? maybeDecimateSplatBuffer(rawBuf, ext)
+                        : rawBuf;
     // Spark 2.x: fileBytes path (see loadSplatFile comment above).
     const opts={fileBytes:_splatBytes, fileName:file.name, ...SPARK_QUALITY_OPTS};
     if(ext==='splat') opts.fileType=SplatFileType.SPLAT;
