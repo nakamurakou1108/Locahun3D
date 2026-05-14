@@ -6682,17 +6682,29 @@ window.showLowPolyHint = function(){
   if(old) old.remove();
   const card = document.createElement('div');
   card.id = 'lowpoly-hint';
-  // Position: bottom-left. On touch devices the joystick sits in the
-  // bottom-left so we lift the card to bottom: 230 px. On desktop
-  // there's no joystick — sit just above the bottom-left corner at
-  // bottom: 24 px. The left offset uses --lp-width so the card clears
-  // the scene-layer panel when it's expanded.
-  const _isTouch = window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
-  const _bottomPx = _isTouch ? 230 : 24;
+  // Position: directly under the top-right #qi-badge (the 画質 / FPS
+  // pill). The badge lives at top:54 / right:14 on desktop and
+  // top:30 / right:6 on smartphones; the card slots in just below so
+  // the hint's "FPS 表示ボタンからも切り替えられます" guidance line
+  // points physically at the badge. Anchoring to the badge instead of
+  // an absolute pixel offset lets us read the badge's actual layout
+  // box at runtime — this is robust against the smartphone media
+  // query, future topbar resizes, and notched viewports.
+  let _topPx = 84;
+  let _rightPx = 14;
+  try {
+    const _badge = document.getElementById('qi-badge');
+    if(_badge){
+      const r = _badge.getBoundingClientRect();
+      if(r && r.bottom > 0){
+        _topPx   = Math.round(r.bottom + 8);
+        _rightPx = Math.round(Math.max(6, innerWidth - r.right));
+      }
+    }
+  } catch(_){}
   card.style.cssText =
     'position:fixed;' +
-    'left:calc(var(--lp-width,0px) + 18px);' +
-    'bottom:' + _bottomPx + 'px;z-index:140;' +
+    'top:' + _topPx + 'px;right:' + _rightPx + 'px;z-index:140;' +
     'background:rgba(20,20,22,.96);border:1px solid rgba(255,180,84,.55);' +
     'border-radius:10px;padding:11px 14px 12px;max-width:300px;' +
     'box-shadow:0 6px 18px rgba(0,0,0,.55);' +
