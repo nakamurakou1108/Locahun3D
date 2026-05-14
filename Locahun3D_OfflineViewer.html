@@ -7105,14 +7105,17 @@ async function loadSplatFile(file){
     if(typeof window._scheduleQualityProbe === 'function'){
       window._scheduleQualityProbe();
     }
-    // Universal "ポリゴン半減" hint card. Shown on every device (touch and
-    // desktop) once per session after the first scene loads, so users
-    // discover the toggle without having to open the quality panel.
-    // The card sits at bottom-left, carries an inline checkbox bound to
-    // setLowPolyMode, plus a ✕ at top-right. sessionStorage gate keeps
-    // it from re-appearing on every file load.
+    // Universal "ポリゴン半減" hint card. Trigger logic:
+    //   • For SMALL files (< 300 MB): show once per session — discovery
+    //     nudge for users who haven't seen the toggle yet.
+    //   • For LARGE files (≥ 300 MB): show on EVERY load — the user is
+    //     more likely to need the toggle for a heavy scene, and one-per-
+    //     session was hiding the card precisely when it was useful.
+    // The card itself dedupes (removes any prior #lowpoly-hint before
+    // building a fresh one) so back-to-back large loads don't stack.
     try {
-      if(!sessionStorage.getItem('locahun_lowpoly_hint_shown')){
+      const _isHeavy = (file && file.size > 300*1024*1024);
+      if(_isHeavy || !sessionStorage.getItem('locahun_lowpoly_hint_shown')){
         sessionStorage.setItem('locahun_lowpoly_hint_shown', '1');
         if(typeof showLowPolyHint === 'function') showLowPolyHint();
       }
