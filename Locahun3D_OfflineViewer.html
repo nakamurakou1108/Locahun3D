@@ -697,15 +697,21 @@ body{position:fixed;top:0;left:0;}
   border-top:1px solid rgba(255,255,255,.07);margin:10px 0 8px;
 }
 #quality-panel .qp-perf-title{
-  font-size:.72em;color:rgba(255,255,255,.3);letter-spacing:.06em;margin-bottom:7px;
+  /* Brightened from rgba(255,255,255,.3) — the prior value failed
+     WCAG AA contrast on a dark panel and the user reported the labels
+     were "faded" / hard to read. */
+  font-size:.72em;color:rgba(220,220,220,.78);letter-spacing:.06em;margin-bottom:7px;
 }
 #quality-panel .qp-stat-row{
   display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;
 }
-#quality-panel .qp-label{font-size:.7em;color:#505050;}
-#quality-panel .qp-value{font-size:.75em;color:#A0A0A0;font-variant-numeric:tabular-nums;}
+/* Label colors bumped from #505050 / #404040 to ~#A8A8A8 for legible
+   contrast on the dark panel. Numbers (qp-value, qp-bar-pct) keep their
+   slightly brighter shade so the actual reading stands out from its label. */
+#quality-panel .qp-label{font-size:.7em;color:#A8A8A8;}
+#quality-panel .qp-value{font-size:.75em;color:#D0D0D0;font-variant-numeric:tabular-nums;}
 #quality-panel .qp-bar-label{
-  font-size:.68em;color:#404040;margin-bottom:2px;margin-top:5px;
+  font-size:.68em;color:#A8A8A8;margin-bottom:2px;margin-top:5px;
   display:flex;justify-content:space-between;align-items:center;
 }
 #quality-panel .qp-bar-bg{
@@ -716,7 +722,7 @@ body{position:fixed;top:0;left:0;}
   height:100%;border-radius:4px;transition:width .4s ease,background .4s;
 }
 #quality-panel .qp-bar-pct{
-  font-size:.65em;color:#505050;font-variant-numeric:tabular-nums;
+  font-size:.65em;color:#B8B8B8;font-variant-numeric:tabular-nums;
 }
 
 #mm-expanded .mm-range-btn{
@@ -3145,11 +3151,15 @@ const clock = new THREE.Clock();
 // have natural edge falloff). Disable AA on heavy displays to claw back FPS.
 renderer = new THREE.WebGLRenderer({
   canvas,
-  // Disable hardware AA on heavy displays AND on every touch device. Phones /
-  // iPads have very high-DPR panels where MSAA shifts the GPU bottleneck from
-  // splat-fill to MSAA-resolve for almost no perceptual benefit on splat
-  // scenes (which already have natural edge falloff).
-  antialias: !_heavyDisplay && !isMobile,
+  // Disable hardware AA on heavy displays, every touch device, AND Mac.
+  // Phones / iPads have very high-DPR panels where MSAA shifts the GPU
+  // bottleneck from splat-fill to MSAA-resolve for almost no perceptual
+  // benefit. Mac was added in 2026-05 after user testing showed that the
+  // MSAA-resolve cost at Retina DPR was a primary source of Chrome's
+  // compositor rAF throttle — wall time 120 ms with submit 0.25 ms on a
+  // 13 M-splat scene at qualScale 1.0. Splat scenes already have natural
+  // edge falloff so the visible quality difference is minimal.
+  antialias: !_heavyDisplay && !isMobile && !(typeof _isMac !== 'undefined' && _isMac),
   powerPreference: 'high-performance',
   stencil: false,
   preserveDrawingBuffer: false,
@@ -6564,7 +6574,7 @@ async function reloadAllSplatLayers(){
     hideLd();
     // Bump Spark's active-sort window so the freshly-built meshes finish
     // their first sort without the user having to nudge the camera.
-    _splatActiveUntil = performance.now() + 4000;
+    _splatActiveUntil = performance.now() + _SPLAT_ACTIVE_MS;
     markDirty(12);
     return true;
   } catch(e){
@@ -7121,7 +7131,7 @@ async function loadSplatFile(file){
     // throttles rAF under continuous renderer.render() submission drops fps
     // to ~45 even while the user is idle. After 4 s the on-demand render path
     // takes over and rAF returns to full vsync rate until next interaction.
-    _splatActiveUntil = performance.now() + 4000;
+    _splatActiveUntil = performance.now() + _SPLAT_ACTIVE_MS;
     requestMinimapUpdate();
     // (orientation "シーンが逆さまですか？" toast removed — no longer pops up after load.)
     // Schedule the one-shot quality auto-probe. The probe itself waits
@@ -11771,7 +11781,7 @@ async function loadAdditionalSplat(file){
       try{ applyLayerFlipQuat(L); }catch(e){ console.warn('portalcam preset apply failed',e); }
     }
     selectLayer(L.id);
-    _splatActiveUntil = performance.now() + 4000;
+    _splatActiveUntil = performance.now() + _SPLAT_ACTIVE_MS;
     setBar(100); setMsg(T('done'));
     await sleep(250); hideLd();
     showUndoToast('✨ ' + L.name + T('add-suffix'));
@@ -12539,6 +12549,13 @@ function bumpSplatActive(ms=3000){
   const t = performance.now() + ms;
   if(t > _splatActiveUntil) _splatActiveUntil = t;
 }
+// Window length for the post-load + post-interaction "splat active"
+// continuous-render mode. On Mac this is cut roughly in half — Chrome's
+// compositor on Mac throttles rAF more aggressively when the renderer
+// stays in continuous-submit mode for long stretches, so a shorter
+// active window lets rAF settle back to vsync sooner after the user
+// stops interacting. Everywhere else stays at the standard 4 s.
+const _SPLAT_ACTIVE_MS = (typeof _isMac !== 'undefined' && _isMac) ? 1800 : 4000;
 
 function animate(now) {
   requestAnimationFrame(animate);
@@ -12824,15 +12841,23 @@ function animate(now) {
   //   respected as a cap; below it the watchdog still defends 30 fps.
   if(!window._gpuWatchdog) window._gpuWatchdog = { slowStreak:0, fastStreak:0, lastStep:0 };
   const _wd = window._gpuWatchdog;
-  // STEPS_ALL matches the three user-pickable presets exactly — per user
-  // request the watchdog NEVER downgrades quality below 低 (0.75). At
-  // 0.75 on a touch device, the recommended next step is the "ポリゴン半減"
-  // toggle (lowers splat count instead of pixel ratio); a hint toast
-  // suggests it after file load.
-  const STEPS_ALL = [0.75, 1.0, 1.5];
+  // STEPS_ALL matches the three user-pickable presets. The watchdog
+  // normally doesn't go below 低 (0.75) — at that point the recommended
+  // next step is the "ポリゴン半減" toggle. EXCEPTION: when wall time is
+  // dire (> 80 ms ≈ <12 fps) AND the device is Mac (where the Chrome
+  // compositor rAF throttle is the dominant slow-state), the watchdog
+  // is permitted to drop below 0.75 to 0.5 or 0.35 as an emergency to
+  // recover an interactive frame rate. Those emergency steps aren't
+  // user-pickable from the panel; the badge just continues to show 低.
+  const _dire = (typeof _wallMsAvg === 'number' && _wallMsAvg > 80);
+  const _allowEmergencyFloor =
+    _dire && typeof _isMac !== 'undefined' && _isMac;
+  const STEPS_ALL = _allowEmergencyFloor
+    ? [0.35, 0.5, 0.75, 1.0, 1.5]
+    : [0.75, 1.0, 1.5];
   const PRESET_FOR_SCALE = s => {
     // Map a qualScale value back to a 0..2 preset index for the badge.
-    //   1.5 → 高 (2), 1.0 → 中 (1), 0.75 → 低 (0)
+    //   1.5 → 高 (2), 1.0 → 中 (1), 0.75 and lower → 低 (0)
     if(s >= 1.4)  return 2;
     if(s >= 0.95) return 1;
     return 0;
@@ -12856,7 +12881,8 @@ function animate(now) {
       // where wall jumps to 100+ ms while GPU submit stays under 1 ms —
       // waiting 60 active frames at 6 fps is 10 seconds of pain.
       const _severe = (_ftAvg > 45 || _wallMsAvg > 45);
-      const _dire   = (_wallMsAvg > 80);
+      // _dire is already declared in outer scope (same condition) —
+      // reuse it here rather than redeclaring.
       const _streakThreshold = _dire ? 12 : (_severe ? 60 : 180);
       if(_wd.slowStreak > _streakThreshold){
         const cur = qualScale;
@@ -14349,7 +14375,7 @@ async function restoreProject(project) {
   // Show HUD / hide drop zone (same as normal file load)
   if(layers.filter(L=>L.type!=='folder').length>0){
     showHUD(); hideDZ();
-    if(layers.some(L=>L.type==='splat')) _splatActiveUntil = performance.now() + 4000;
+    if(layers.some(L=>L.type==='splat')) _splatActiveUntil = performance.now() + _SPLAT_ACTIVE_MS;
     requestMinimapUpdate();
     // btnFlip removed (Y-flip is in layer panel)
   }
