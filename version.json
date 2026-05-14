@@ -1,6 +1,6 @@
 {
-  "version": "0.0.1-alpha.2",
+  "version": "0.0.2-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "AR mode integrated (WebGL-passthrough is now the single AR path). Quality presets redefined to 低/中/高. iPad performance pass + low-poly toggle. Cleanup of dev tools."
+  "notes": "Mac perf pass (disable AA / emergency watchdog floor / shorter splat-active window) + polygon-1/4 toggle (was halve) + iPad full-quality load + demo data download button + assorted UI tweaks."
 }
