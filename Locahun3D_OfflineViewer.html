@@ -5342,7 +5342,7 @@ window.captureCamShot = async function(){
   const blob0 = await new Promise(r2=>out.toBlob(r2, 'image/jpeg', cam.jpegQ));
   // Inject our camera-state JSON into a JPEG COM segment so the file can be
   // dropped back onto the Salvage zone later to restore camera position + settings.
-  const blob = await embedDigirokeMetadata(blob0);
+  const blob = await embedLocahunMetadata(blob0);
   // Filename = ショット名 (or 'shot' if blank). Repeats in the same session get
   // _v2, _v3 … suffixes so nothing overwrites silently.
   const fileName = _nextCaptureFilename(cam.shot);
@@ -5397,13 +5397,18 @@ window.captureCamShot = async function(){
 // JPEGs are a stream of segments: SOI (FFD8) then a series of FF<marker><len><data>.
 // COM is FFFE and its 2-byte length INCLUDES the length bytes themselves. We inject
 // our segment immediately after SOI so it survives most viewers/editors that copy
-// untouched segments. The payload starts with a fixed magic ("DIGIROKE\0") so we can
-// reliably find it on read even if the file has other COM segments.
-const _DIGIROKE_MAGIC = 'DIGIROKE\0';
+// untouched segments. The payload starts with a fixed magic so we can reliably
+// find it on read even if the file has other COM segments.
+//
+// PRIMARY magic is "LOCAHUN3D\0" — what we write today. The older "DIGIROKE\0"
+// magic is accepted on read for backward compatibility with JPEGs saved by
+// earlier versions of the app (older project name); we do NOT write it any more.
+const _LOCAHUN_MAGIC  = 'LOCAHUN3D\0';
+const _LEGACY_MAGICS  = ['DIGIROKE\0'];   // read-only fallbacks
 function _strToBytes(s){ return new TextEncoder().encode(s); }
 function _bytesToStr(b){ return new TextDecoder('utf-8',{fatal:false}).decode(b); }
 
-async function embedDigirokeMetadata(jpegBlob){
+async function embedLocahunMetadata(jpegBlob){
   try{
     const buf = new Uint8Array(await jpegBlob.arrayBuffer());
     if(buf[0] !== 0xFF || buf[1] !== 0xD8) return jpegBlob; // not a JPEG SOI
@@ -5426,7 +5431,7 @@ async function embedDigirokeMetadata(jpegBlob){
         rig: cam.rig, shot: cam.shot, env: cam.env, note: cam.note,
       },
     };
-    const payload = _strToBytes(_DIGIROKE_MAGIC + JSON.stringify(meta));
+    const payload = _strToBytes(_LOCAHUN_MAGIC + JSON.stringify(meta));
     // COM segment length includes the 2 length bytes (max 65535)
     if(payload.length + 2 > 0xFFFF) return jpegBlob; // too big, give up gracefully
     const segLen = payload.length + 2;
@@ -5440,14 +5445,18 @@ async function embedDigirokeMetadata(jpegBlob){
     out.set(buf.subarray(2), p);
     return new Blob([out], { type: 'image/jpeg' });
   }catch(e){
-    console.warn('embedDigirokeMetadata failed:', e);
+    console.warn('embedLocahunMetadata failed:', e);
     return jpegBlob;
   }
 }
 
-async function extractDigirokeMetadata(file){
+async function extractLocahunMetadata(file){
   const buf = new Uint8Array(await file.arrayBuffer());
   if(buf[0] !== 0xFF || buf[1] !== 0xD8) throw new Error('JPEG ではありません');
+  // Try the current magic first, then any legacy magics. _LOCAHUN_MAGIC
+  // is what new JPEGs carry; _LEGACY_MAGICS keeps older "DIGIROKE\0"
+  // saves loadable.
+  const allMagics = [_LOCAHUN_MAGIC, ..._LEGACY_MAGICS].map(_strToBytes);
   let i = 2;
   while(i + 4 < buf.length){
     if(buf[i] !== 0xFF){ i++; continue; }
@@ -5462,14 +5471,15 @@ async function extractDigirokeMetadata(file){
     if(segLen < 2) break;
     if(marker === 0xFE){
       const data = buf.subarray(i+4, i+2+segLen);
-      const magicBytes = _strToBytes(_DIGIROKE_MAGIC);
-      let match = data.length >= magicBytes.length;
-      for(let j=0; match && j<magicBytes.length; j++){
-        if(data[j] !== magicBytes[j]) match = false;
-      }
-      if(match){
-        const json = _bytesToStr(data.subarray(magicBytes.length));
-        return JSON.parse(json);
+      for(const magicBytes of allMagics){
+        let match = data.length >= magicBytes.length;
+        for(let j=0; match && j<magicBytes.length; j++){
+          if(data[j] !== magicBytes[j]) match = false;
+        }
+        if(match){
+          const json = _bytesToStr(data.subarray(magicBytes.length));
+          return JSON.parse(json);
+        }
       }
     }
     i += 2 + segLen;
@@ -5485,7 +5495,7 @@ window.salvageCamFromFile = async function(file){
   }
   let meta;
   try {
-    meta = await extractDigirokeMetadata(file);
+    meta = await extractLocahunMetadata(file);
   } catch(e){
     showUndoToast('⚠ ' + e.message);
     return;
