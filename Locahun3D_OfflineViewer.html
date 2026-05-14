@@ -1130,7 +1130,7 @@ body{position:fixed;top:0;left:0;}
        in Spark 2.0.0). -->
   <div class="qrow" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0">
     <label id="qp-lbl-lowpoly" style="font-size:.78em;color:#686868;line-height:1.25">
-      <span id="qp-lbl-lowpoly-main">ポリゴン半減</span>
+      <span id="qp-lbl-lowpoly-main">ポリゴン 1/4</span>
       <span id="qp-lbl-lowpoly-hint" style="display:block;font-size:.72em;color:#404040">PLY/SPLAT のみ・要再読み込み</span>
     </label>
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
@@ -6608,15 +6608,20 @@ window.setLowPolyMode = function(on){
     }
   } catch(_){}
   try {
-    localStorage.setItem('locahun_splat_stride', want ? '2' : '1');
+    // '4' = keep every 4th splat (1/4 of total). User-facing label is
+    // now "ポリゴン 1/4" — was "ポリゴン半減" (stride=2). The more
+    // aggressive default gives users a bigger perf delta from a single
+    // toggle, since on Mac/iPad even halving wasn't enough to recover
+    // interactive fps on heavy scenes.
+    localStorage.setItem('locahun_splat_stride', want ? '4' : '1');
   } catch(_){}
   const cb = document.getElementById('lowpoly-toggle');
   if(cb && cb.checked !== want) cb.checked = want;
   if(typeof showUndoToast === 'function'){
     if(want){
-      showUndoToast(T('lowpoly-on') || '🎚 ポリゴン半減を適用中…');
+      showUndoToast(T('lowpoly-on') || '🎚 ポリゴン 1/4 を適用中…');
     } else {
-      showUndoToast(T('lowpoly-off') || '🎚 ポリゴン半減を解除中…');
+      showUndoToast(T('lowpoly-off') || '🎚 ポリゴン 1/4 を解除中…');
     }
   }
   if(typeof reloadAllSplatLayers === 'function'){
@@ -6667,9 +6672,9 @@ window.showLowPolyHint = function(){
     'transition:opacity .35s ease;';
   const lang = (window._lang === 'en') ? 'en' : 'ja';
   const title  = (lang === 'en')
-    ? 'If performance is heavy, turn ON "Halve splats".'
-    : '動作が重い場合は「ポリゴン半減」を ON';
-  const cbLbl  = (lang === 'en') ? 'Halve splats' : 'ポリゴン半減';
+    ? 'If performance is heavy, turn ON "Reduce splats to 1/4".'
+    : '動作が重い場合は「ポリゴン 1/4」を ON';
+  const cbLbl  = (lang === 'en') ? 'Reduce to 1/4' : 'ポリゴン 1/4';
   const hint   = (lang === 'en')
     ? 'You can also toggle this from the top-right FPS badge later.'
     : 'この設定は右上の FPS 表示ボタンからも切り替えられます';
@@ -6973,13 +6978,13 @@ async function loadSplatFile(file){
       if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod){
         try {
           if(localStorage.getItem('locahun_splat_stride') == null){
-            localStorage.setItem('locahun_splat_stride', '2');
+            localStorage.setItem('locahun_splat_stride', '4');
             const cb = document.getElementById('lowpoly-toggle');
             if(cb) cb.checked = true;
             const hintCb = document.getElementById('lph-cb');
             if(hintCb) hintCb.checked = true;
             if(typeof showUndoToast === 'function'){
-              showUndoToast('🎚 大きいファイルのため「ポリゴン半減」を ON にしました');
+              showUndoToast('🎚 大きいファイルのため「ポリゴン 1/4」を ON にしました');
             }
           }
         } catch(_){}
@@ -9421,11 +9426,11 @@ const I18N = {
   'qt-mid':'中',
   'qt-high':'高',
   'qp-perf-t':'📊 処理能力モニター',
-  'qp-lbl-lowpoly-main':'ポリゴン半減',
+  'qp-lbl-lowpoly-main':'ポリゴン 1/4',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT のみ・自動で再読み込み',
   'qp-lbl-lowpoly-on':'ON',
-  'lowpoly-on':'🎚 ポリゴン半減を適用中…',
-  'lowpoly-off':'🎚 ポリゴン半減を解除中…',
+  'lowpoly-on':'🎚 ポリゴン 1/4 を適用中…',
+  'lowpoly-off':'🎚 ポリゴン 1/4 を解除中…',
   'qp-l-frame':'フレーム時間',
   'qp-l-gpu':'GPU 負荷',
   'qp-l-head':'余剰 (ヘッドルーム)',
@@ -9531,10 +9536,10 @@ const I18N = {
   'qt-mid':'Mid',
   'qt-high':'High',
   'qp-perf-t':'📊 Performance Monitor',
-  'qp-lbl-lowpoly-main':'Halve splats',
+  'qp-lbl-lowpoly-main':'Splats 1/4',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT only — auto reload',
   'qp-lbl-lowpoly-on':'ON',
-  'lowpoly-on':'🎚 Halving splats…',
+  'lowpoly-on':'🎚 Reducing splats to 1/4…',
   'lowpoly-off':'🎚 Restoring full splat count…',
   'qp-l-frame':'Frame Time',
   'qp-l-gpu':'GPU Load',
