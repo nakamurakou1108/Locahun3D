@@ -3158,16 +3158,27 @@ renderer = new THREE.WebGLRenderer({
   depth: true,
   failIfMajorPerformanceCaveat: false, // allow software fallback gracefully on low-end machines
 });
-// PR cap per environment. Tier-aware so high-DPR touch devices don't pay a
-// 9× pixel cost (3 DPR squared) for splats they can barely sort in time.
-// Laptop variants (incl. Intel Mac, weak iGPU) were collapsed into the
-// desktop cap of 2 in 2026-05 — the watchdog handles dynamic downsteps on
-// hardware that can't keep up.
+// PR cap per environment. Tier-aware so high-DPR devices don't pay a
+// 4–9× pixel cost (DPR squared) for splats they can barely sort in time.
 //   phone       (DPR≈3, mobile GPU)        : 1.5
 //   tablet/iPad (DPR≈2, Apple A/M-series)  : 1.75
-//   desktop / laptop / any non-touch       : 2
+//   Mac         (Retina DPR=2, Chrome      : 1.5  ← Mac-specific cap
+//                compositor throttles rAF
+//                under heavy WebGL submit;
+//                the 5090-class hardware
+//                doesn't have this problem
+//                because non-Mac Chrome is
+//                less aggressive about it)
+//   desktop / laptop (non-Mac)             : 2
+// Mac at PR 2 with a 13 M-splat scene was 6 fps in user testing — even
+// though submit time was 0.25 ms (= GPU idle). The 120 ms wall time was
+// pure compositor throttle; reducing the canvas drawing buffer by 44 %
+// (PR 1.5 vs PR 2) drops the per-frame composition cost below Chrome's
+// rAF-throttle threshold. Visible quality difference is small because
+// Retina output at PR 1.5 (= 1.5× native) still oversamples the panel.
 const _PR_CAP = (_splatPerfTier === 'phone')  ? 1.5
               : (_splatPerfTier === 'tablet') ? 1.75
+              : (typeof _isMac !== 'undefined' && _isMac) ? 1.5
               :                                 2;
 renderer.setPixelRatio(Math.min(devicePixelRatio, _PR_CAP) * qualScale);
 renderer.setSize(innerWidth, innerHeight);
@@ -12835,14 +12846,18 @@ function animate(now) {
     if(_ftAvg > 28 || _wallMsAvg > 30){
       _wd.slowStreak++;
       _wd.fastStreak = 0;
-      // Two-tier down-step trigger so the watchdog reacts faster to
-      // severe slowdowns (below 20 fps) without being twitchy at the
-      // mild-stress boundary:
-      //   • normal:   180 active frames (~3 s at 60 fps)
-      //   • severe:    60 active frames (~1 s)  when render > 45 ms OR
+      // Three-tier down-step trigger:
+      //   • normal:    180 active frames (~3 s at 60 fps)
+      //   • severe:     60 active frames (~1 s)  when render > 45 ms OR
       //                                          wall > 45 ms (~22 fps)
+      //   • dire:       12 active frames (~0.2 s) when wall > 80 ms
+      //                                          (~12 fps or worse)
+      // The "dire" tier catches Mac Chrome's compositor-throttled state
+      // where wall jumps to 100+ ms while GPU submit stays under 1 ms —
+      // waiting 60 active frames at 6 fps is 10 seconds of pain.
       const _severe = (_ftAvg > 45 || _wallMsAvg > 45);
-      const _streakThreshold = _severe ? 60 : 180;
+      const _dire   = (_wallMsAvg > 80);
+      const _streakThreshold = _dire ? 12 : (_severe ? 60 : 180);
       if(_wd.slowStreak > _streakThreshold){
         const cur = qualScale;
         const next = STEPS_ALL.slice().reverse().find(s => s < cur - 0.001);
