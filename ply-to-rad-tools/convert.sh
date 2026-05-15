@@ -68,20 +68,52 @@ convert_one() {
   local base
   base="$(basename "$src_abs")"
   local name="${base%.*}"
+  local ext="${base##*.}"
+  ext="${ext,,}"  # lowercase
 
   echo
   echo "------------------------------------------------------------"
   echo "  入力: $src_abs"
   echo "------------------------------------------------------------"
 
+  # PLY を -90 度 X 軸回転して一時ファイルへ書き出し (.ply のみ対象)
+  # rotate_ply.js は positions / normals / 3DGS rotation quaternion を回転します
+  local build_src="$src_abs"
+  local tmp_rot=""
+  if [ "$ext" = "ply" ]; then
+    tmp_rot="${src_dir}/${name}_rotX-90.ply"
+    echo "[INFO] PLY を -90 度 X 回転中..."
+    local self_dir
+    self_dir="$(cd "$(dirname "$0")" && pwd)"
+    if ! node "${self_dir}/rotate_ply.js" "$src_abs" "$tmp_rot"; then
+      echo "[NG] 回転処理に失敗しました"
+      [ -f "$tmp_rot" ] && rm -f "$tmp_rot"
+      return
+    fi
+    build_src="$tmp_rot"
+  fi
+
   (
     cd spark
-    npm run build-lod -- "$src_abs" --quality
+    npm run build-lod -- "$build_src" --quality
   )
+  local conv_exit=$?
 
-  # 出力ファイル候補を順に探す
+  # 一時 PLY を掃除
+  [ -n "$tmp_rot" ] && [ -f "$tmp_rot" ] && rm -f "$tmp_rot"
+
+  if [ "$conv_exit" -ne 0 ]; then
+    echo "[NG] 変換に失敗しました: $src_abs"
+    return
+  fi
+
+  # 出力ファイル候補を順に探す (回転済み名 → 通常名 の順)
   local out=""
   for candidate in \
+    "${src_dir}/${name}_rotX-90-lod.rad" \
+    "${src_dir}/${name}_rotX-90_lod.rad" \
+    "${src_dir}/${name}_rotX-90.lod.rad" \
+    "${src_dir}/${name}_rotX-90.rad" \
     "${src_dir}/${name}-lod.rad" \
     "${src_dir}/${name}_lod.rad" \
     "${src_dir}/${name}.lod.rad" \

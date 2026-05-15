@@ -3,6 +3,11 @@
 PLY / SPZ / SOG ファイルを Spark の **RAD 形式** (LoD + チャンクストリーミング対応)
 にローカル変換するスクリプト集です。**入力ファイルの隣に `.rad` が出力されます**。
 
+PLY 入力時は **-90°のX軸回転を自動適用**してから build-lod に渡します
+(ロケハン3D ビューワーで上向きになる向きに合わせるため)。
+`rotate_ply.js` が positions / normals / 3DGS rotation quaternion を回転します。
+高次の SH (`f_rest_*`) があると警告が出ます (Wigner D 行列の適用は未実装)。
+
 ## 使い方は 3 ステップ
 
 ### 1. 解凍 → 好きな場所に置く

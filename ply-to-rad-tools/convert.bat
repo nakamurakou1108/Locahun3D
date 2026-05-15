@@ -88,12 +88,31 @@ if not exist "!SRC_ABS!" (
   goto :eof
 )
 
+REM PLY を -90 度 X 軸回転して一時ファイルへ書き出し (.ply のみ対象)
+REM rotate_ply.js は positions / normals / 3DGS rotation quaternion を回転します
+set "BUILD_SRC=!SRC_ABS!"
+set "TMP_ROT="
+if /i "!SRC_EXT!"==".ply" (
+  set "TMP_ROT=!SRC_DIR!!SRC_NAME!_rotX-90.ply"
+  echo [INFO] PLY を -90 度 X 回転中...
+  node "%~dp0rotate_ply.js" "!SRC_ABS!" "!TMP_ROT!"
+  if errorlevel 1 (
+    echo [NG] 回転処理に失敗しました
+    if exist "!TMP_ROT!" del /f /q "!TMP_ROT!" >/dev/null 2>&1
+    goto :eof
+  )
+  set "BUILD_SRC=!TMP_ROT!"
+)
+
 REM Spark の build-lod を実行
 REM 出力先は入力と同じフォルダになる(build-lod の動作)
 pushd spark
-call npm run build-lod -- "!SRC_ABS!" --quality
+call npm run build-lod -- "!BUILD_SRC!" --quality
 set CONV_EXIT=!errorlevel!
 popd
+
+REM 一時 PLY を掃除
+if defined TMP_ROT if exist "!TMP_ROT!" del /f /q "!TMP_ROT!" >/dev/null 2>&1
 
 if !CONV_EXIT! neq 0 (
   echo [NG] 変換に失敗しました: !SRC!
@@ -104,6 +123,10 @@ REM build-lod の出力ファイル名は実装により異なる可能性があるので
 REM 複数のパターンを順に探す
 set "OUT_PATH="
 for %%P in (
+  "!SRC_DIR!!SRC_NAME!_rotX-90-lod.rad"
+  "!SRC_DIR!!SRC_NAME!_rotX-90_lod.rad"
+  "!SRC_DIR!!SRC_NAME!_rotX-90.rad"
+  "!SRC_DIR!!SRC_NAME!_rotX-90.lod.rad"
   "!SRC_DIR!!SRC_NAME!-lod.rad"
   "!SRC_DIR!!SRC_NAME!_lod.rad"
   "!SRC_DIR!!SRC_NAME!.rad"
