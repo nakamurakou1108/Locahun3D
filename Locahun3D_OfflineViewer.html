@@ -6597,21 +6597,13 @@ function subsampleSplatFile(rawBuf, stride){
   }
 }
 // Dispatch helper — call before handing rawBuf to Spark.
-// Base stride comes from `_splatStride()` (localStorage user preference,
-// defaulting to 1). On iPHONE / iPOD ONLY, PLY / SPLAT files larger
-// than 300 MB additionally escalate the runtime stride to ≥ 4 for the
-// current load. iPad and desktop are NOT subject to this escalation —
-// they have enough memory to handle the seeded stride=2 (or whatever
-// the user picked in the panel). The seed in loadSplatFile() still
-// fires on all devices so the panel checkbox flips ON for big files
-// universally; only the additional runtime escalation is iPhone-only.
+// Stride comes from `_splatStride()` (localStorage user preference,
+// defaulting to 1). Per user direction (2026-05) the previous iPhone-
+// only auto-escalation to stride ≥ 4 for files > 300 MB has been
+// REMOVED so every device behaves identically: full quality unless
+// the user explicitly toggles "ポリゴン 1/4" in the quality panel.
 function maybeDecimateSplatBuffer(rawBuf, ext){
-  let stride = _splatStride();
-  if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod &&
-     (ext === 'ply' || ext === 'splat') && rawBuf && rawBuf.byteLength &&
-     rawBuf.byteLength > 300 * 1024 * 1024){
-    stride = Math.max(stride, 4);
-  }
+  const stride = _splatStride();
   if(stride <= 1) return rawBuf;
   if(ext === 'ply'){
     const out = subsamplePLY(rawBuf, stride);
@@ -7128,31 +7120,12 @@ async function loadSplatFile(file){
         showUndoToast('⚠ ファイル ' + mb + ' MB は iPhone のメモリ上限に近いです。SPZ 変換を推奨');
       }
     }
-    // Big-file (> 300 MB) auto-tuning is now iPhone-only:
-    //   • iPhone : seed localStorage = '2' so the polygon-halve toggle
-    //       flips ON visibly + the load itself decimates (and the
-    //       stride-4 escalation inside maybeDecimateSplatBuffer kicks
-    //       in to keep peak memory under the 1.5 GB tab ceiling).
-    //   • iPad / laptop / desktop : NEVER seeded. Those devices load
-    //       the file at full quality. If users want to halve later they
-    //       can use the toggle (via the FPS badge → quality panel, or
-    //       the universal bottom-left hint card shown after first load).
-    if((ext === 'ply' || ext === 'splat') && file && file.size > 300*1024*1024){
-      if(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod){
-        try {
-          if(localStorage.getItem('locahun_splat_stride') == null){
-            localStorage.setItem('locahun_splat_stride', '4');
-            const cb = document.getElementById('lowpoly-toggle');
-            if(cb) cb.checked = true;
-            const hintCb = document.getElementById('lph-cb');
-            if(hintCb) hintCb.checked = true;
-            if(typeof showUndoToast === 'function'){
-              showUndoToast('🎚 大きいファイルのため「ポリゴン 1/4」を ON にしました');
-            }
-          }
-        } catch(_){}
-      }
-    }
+    // Big-file auto-decimation has been REMOVED across all device classes.
+    // Per user direction (2026-05): every device — including iPhone — now
+    // loads at full quality by default. iPhones with insufficient tab
+    // memory will still crash on huge files; users can manually toggle
+    // "ポリゴン 1/4" from the quality panel after observing slow FPS or
+    // memory pressure.
 
     // ── 常にバッファを読み込む（ZIP保存キャッシュ兼用）──
     setMsg(T('loading-file')); setBar(15);
@@ -7172,26 +7145,17 @@ async function loadSplatFile(file){
 
     setMsg(T('building-3dgs')); setBar(50);
 
-    // Apply the user-selectable "low-poly" decimation BEFORE handing the
-    // buffer to Spark. ONLY iPhone / iPod runs decimation at load time;
-    // every other class of device (iPad, laptop, desktop) loads at FULL
-    // quality regardless of the toggle preference. The toggle then
-    // behaves as an explicit "halve now" rebuild (reloadAllSplatLayers
-    // continues to honour _splatStride() unconditionally), so users on
-    // capable hardware never sacrifice initial fidelity to a stale
-    // localStorage seed. iPhone keeps the gate because its tab memory
-    // ceiling (~1.5 GB) genuinely crashes on big files without it.
-    const _splatBytes = (typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)
-                        ? maybeDecimateSplatBuffer(rawBuf, ext)
-                        : rawBuf;
-    // Non-iPhone devices loaded the file at full quality. If a stale
-    // localStorage entry from a previous session still says stride=2
-    // (e.g. the user previously toggled ON, or the all-devices seed
-    // from an earlier build wrote '2'), the toggle UI would falsely
-    // display ON when no actual decimation occurred. Force-sync the
-    // persisted preference + every visible toggle to OFF so the user
-    // sees the truth: load was full, you can opt-in later.
-    if(!(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)){
+    // Load-time decimation has been REMOVED across all device classes.
+    // Every device — including iPhone — loads at full quality. The
+    // "ポリゴン 1/4" toggle is now strictly OPT-IN: it only takes effect
+    // when the user explicitly flips it (reloadAllSplatLayers continues
+    // to honour _splatStride() so the manual toggle path still works).
+    const _splatBytes = rawBuf;
+    // Force-sync the persisted preference + every visible toggle to OFF
+    // so a stale `locahun_splat_stride=4` entry from a previous session
+    // (e.g. earlier iPhone build that seeded it on big files) doesn't
+    // misrepresent the actual full-quality load.
+    {
       try { localStorage.setItem('locahun_splat_stride', '1'); } catch(_){}
       const _qpCb = document.getElementById('lowpoly-toggle');
       if(_qpCb) _qpCb.checked = false;
@@ -11951,14 +11915,13 @@ async function loadAdditionalSplat(file){
     setMsg(T('loading-file')); setBar(15);
     const rawBuf=await file.arrayBuffer();  // read for caching
     setBar(45);
-    // Apply user-selectable decimation (PLY/SPLAT only; SPZ/KSPLAT pass through).
-    // Only iPhone runs load-time decimation — same rationale as loadSplatFile.
-    const _splatBytes = (typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)
-                        ? maybeDecimateSplatBuffer(rawBuf, ext)
-                        : rawBuf;
-    // Force-sync the toggle UI to OFF on non-iPhone devices — see the
-    // same logic in loadSplatFile() above for rationale.
-    if(!(typeof _isIPhoneOrIPod !== 'undefined' && _isIPhoneOrIPod)){
+    // Full-quality load on every device — load-time decimation removed
+    // (per user direction 2026-05). Users opt in to "ポリゴン 1/4" via
+    // the quality panel toggle if they hit memory / FPS issues.
+    const _splatBytes = rawBuf;
+    // Force-sync any stale `locahun_splat_stride` preference + visible
+    // toggle UI to OFF so the user sees the truth: load was full quality.
+    {
       try { localStorage.setItem('locahun_splat_stride', '1'); } catch(_){}
       const _qpCb = document.getElementById('lowpoly-toggle');
       if(_qpCb) _qpCb.checked = false;
