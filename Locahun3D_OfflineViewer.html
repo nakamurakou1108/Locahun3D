@@ -6555,6 +6555,25 @@ function _radLodScaleForStride(stride){
   if(!Number.isFinite(stride) || stride <= 1) return 1;
   return Math.sqrt(stride);
 }
+
+// Quality preset multiplier applied on top of the stride-derived lodScale.
+// Lower lodScale = splats split into children sooner = more detail in view.
+//   低 (idx 0): ×1.4  — coarser, fewer chunks loaded, lighter on GPU
+//   中 (idx 1): ×1.0  — Spark default
+//   高 (idx 2): ×0.7  — ~2× the splat density in view = noticeably crisper
+// Combined examples (stride × quality):
+//   stride 1 × 高 (0.7)  → 0.7    (more detail than Spark default)
+//   stride 4 × 高 (0.7)  → 1.4    (still reduced vs 1/4 toggle alone)
+//   stride 1 × 低 (1.4)  → 1.4    (lighter than default)
+function _radLodScaleForQuality(idx){
+  if(idx === 0) return 1.4;
+  if(idx === 2) return 0.7;
+  return 1.0;
+}
+function _radEffectiveLodScale(){
+  return _radLodScaleForStride(_splatStride())
+       * _radLodScaleForQuality(typeof qualIdx === 'number' ? qualIdx : 1);
+}
 function subsamplePLY(rawBuf, stride){
   if(stride <= 1) return rawBuf;
   try {
@@ -6693,7 +6712,7 @@ async function reloadAllSplatLayers(){
         });
         opts.lod = true;
         opts.enableLod = true;
-        opts.lodScale = _radLodScaleForStride(_splatStride());
+        opts.lodScale = _radEffectiveLodScale();
         delete opts.fileBytes;
         delete opts.fileType;
         delete opts.coneFoveate;
@@ -7244,7 +7263,7 @@ async function loadSplatFile(file){
       opts.lod = true;
       opts.enableLod = true;
       // Honour the "ポリゴン 1/4" toggle for RAD too — see _radLodScaleForStride.
-      opts.lodScale = _radLodScaleForStride(_splatStride());
+      opts.lodScale = _radEffectiveLodScale();
       // PagedSplats now owns the bytes; remove SplatMesh-level fileBytes
       // so Spark doesn't try to double-parse.
       delete opts.fileBytes;
@@ -11983,7 +12002,7 @@ async function loadAdditionalSplat(file){
       });
       opts.lod = true;
       opts.enableLod = true;
-      opts.lodScale = _radLodScaleForStride(_splatStride());
+      opts.lodScale = _radEffectiveLodScale();
       delete opts.fileBytes;
       delete opts.fileType;
       // Strip foveation overrides — see loadSplatFile() for the rationale.
@@ -13286,7 +13305,7 @@ async function loadFromURL(url, displayName){
       // dropping from ~60 s to ~5 s on a 5 M-splat scene with paged.
       opts.paged = true;
       // Honour the "ポリゴン 1/4" toggle for URL-autoloaded RAD too.
-      opts.lodScale = _radLodScaleForStride(_splatStride());
+      opts.lodScale = _radEffectiveLodScale();
       // Mirror loadSplatFile's existing main-splat-layer swap so user
       // doesn't end up with stacked meshes after multiple autoloads.
       const _prevMain = layers.find(l => l._isMain);
@@ -14620,7 +14639,7 @@ async function restoreProject(project) {
             });
             opts.lod = true;
             opts.enableLod = true;
-            opts.lodScale = _radLodScaleForStride(_splatStride());
+            opts.lodScale = _radEffectiveLodScale();
             delete opts.url;
             delete opts.fileType;
             delete opts.coneFoveate;
@@ -16346,6 +16365,20 @@ window.setQuality=function(scale,idx){
   renderer.setPixelRatio(Math.min(devicePixelRatio,_PR_CAP)*scale);
   document.querySelectorAll('#quality-panel #qbtns button').forEach((b,i)=>b.classList.toggle('on',i===idx));
   _updateQiBadgeLabel(idx);
+  // RAD scenes use a per-mesh `lodScale` to drive how aggressively Spark's
+  // LoD walker subdivides chunks. Updating it on the fly lets a quality
+  // preset change (低/中/高) raise or lower splat density in view without
+  // rebuilding the mesh. PLY/SPLAT ignore lodScale (geometry is baked).
+  try {
+    const newLod = _radEffectiveLodScale();
+    if(typeof layers !== 'undefined' && layers){
+      for(const L of layers){
+        if(L && L.mesh && L.mesh.paged && typeof L.mesh.lodScale === 'number'){
+          L.mesh.lodScale = newLod;
+        }
+      }
+    }
+  } catch(_){}
   // The continuous watchdog stays ACTIVE even after a manual pick. The user's
   // choice becomes the new "ceiling" the watchdog up-steps toward; if render
   // time later threatens the 30 fps floor the watchdog will still drop
