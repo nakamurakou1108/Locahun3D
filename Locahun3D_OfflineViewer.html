@@ -4167,10 +4167,37 @@ function pickWorldPos(clientX, clientY) {
   const origin = _ray.ray.origin;
   const dir    = _ray.ray.direction;
 
+  // ── First: try Spark's WASM-backed raycaster against any splat mesh ──
+  // The CPU-side `_splatCache` is only built for PLY / SPLAT (where we
+  // parse positions out of the buffer at load time). For .rad scenes the
+  // splat positions live exclusively inside Spark's packed GPU texture
+  // and are reached via SplatMesh.raycast(), which delegates to a WASM
+  // helper that does ray-vs-anisotropic-ellipsoid tests on the on-chip
+  // splat data. Using THREE.Raycaster keeps PLY/SPLAT picking accurate
+  // too (handy when the cache is stale, e.g. right after a reload).
+  {
+    if(!pickWorldPos._raycaster) pickWorldPos._raycaster = new THREE.Raycaster();
+    const rc = pickWorldPos._raycaster;
+    rc.setFromCamera(_v2, camera);
+    const splatMeshes = [];
+    for(const L of layers){
+      if(L && L.visible && L.type === 'splat' && L.mesh) splatMeshes.push(L.mesh);
+    }
+    if(splatMeshes.length){
+      const hits = rc.intersectObjects(splatMeshes, false);
+      if(hits && hits.length){
+        const h = hits[0];
+        msr.placeDepth = Math.min(50, Math.max(0.3, h.distance));
+        return h.point.clone();
+      }
+    }
+  }
   // ── Gather pickable splat layers (each with its own matrixWorld + cache) ──
-  // The picker iterates every visible splat layer that has a position cache built.
-  // Each layer's cache is in mesh-local space; we compose its world matrix on the fly
-  // (bypassing Spark's matrixAutoUpdate flag) and pick the layer+point with smallest t.
+  // Fallback: per-layer position cache (only set for PLY / SPLAT at load
+  // time via estimatePLYStats / estimateSplatStats). This branch is used
+  // when SplatMesh.raycast() returned no hits — typically because we're
+  // pointing at empty space and only want the closest surface candidate
+  // anywhere within a screen-space tolerance.
   const m11 = (innerHeight / 2) / Math.tan(THREE.MathUtils.degToRad(fov / 2));
   const pxRadius = 5;
   const THR_MIN = 0.30;
