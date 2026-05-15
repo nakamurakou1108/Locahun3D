@@ -14183,10 +14183,43 @@ window.saveProjectZip = async function(){
       });
     }
 
+    // ── Mobile memory budget for ZIP creation ──────────────────────────────
+    // Chrome on Android phones (and Safari on iPhone) sandboxes each tab to
+    // roughly 1.5 GB of resident memory. The current ZIP path holds the
+    // splat bytes in L._rawBuffer AND allocates an entire ~same-sized
+    // output buffer inside fflate.zipSync, then a Blob copy on top. For a
+    // 357 MB .rad scene that's well over 1 GB peak — the tab gets killed
+    // (the "このページを開けません" sad-tab page the user reported).
+    //
+    // Detection: viewport short-edge < 700 px catches iPhone, most Android
+    // phones, and excludes iPad / Mac / desktop. We deliberately use the
+    // viewport metric instead of UA so a phone in landscape isn't missed.
+    //
+    // Budget: 200 MB of total splat bytes. Below that we keep the existing
+    // full save path (works fine on phones for small scenes). At or above
+    // we drop the splat data from the ZIP — project.json still lists the
+    // original filenames so the user can re-attach the .rad / .ply by
+    // dragging it onto the viewer after extracting the ZIP.
+    const _shortEdge = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+    const _isPhoneClass = isMobile && _shortEdge > 0 && _shortEdge < 700;
+    const PHONE_SPLAT_BUDGET = 200 * 1024 * 1024;
+    let _totalSplatBytes = 0;
+    for(const L of layers){
+      if(L && L.type === 'splat' && L._rawBuffer && L._rawBuffer.byteLength){
+        _totalSplatBytes += L._rawBuffer.byteLength;
+      }
+    }
+    const _skipSplatData = _isPhoneClass && _totalSplatBytes > PHONE_SPLAT_BUDGET;
+    if(_skipSplatData){
+      const mb = Math.round(_totalSplatBytes / 1024 / 1024);
+      console.warn(`[saveZIP] phone-class device + ${mb} MB splat data — switching to lite save (project.json only)`);
+    }
+
     // Build file map and layer entries
     const files = {};   // path → Uint8Array
     const serialized = [];
     let fileIdx = 0;
+    let _skippedSplatCount = 0;
 
     for(const L of layers){
       const entry = {
@@ -14228,10 +14261,23 @@ window.saveProjectZip = async function(){
         if(L._rawBuffer){
           const ext=L._rawExt||'splat';
           const fname=`splat/${fileIdx++}_${L.name.replace(/[^a-zA-Z0-9_-]/g,'_')}.${ext}`;
-          files[fname]=new Uint8Array(L._rawBuffer);
-          entry.file=fname;
-          entry.rawExt=ext;
-          entry.isMain=L._isMain||false;
+          // Phone-class device with oversized payload: record the metadata
+          // (filename, ext, isMain) but DON'T copy the raw bytes into the
+          // ZIP. The loader will see entry.file pointing at a missing
+          // archive member and surface it as a "re-attach this file"
+          // warning rather than crashing the save.
+          if(_skipSplatData){
+            entry.file=fname;
+            entry.rawExt=ext;
+            entry.isMain=L._isMain||false;
+            entry.missing=true;
+            _skippedSplatCount++;
+          } else {
+            files[fname]=new Uint8Array(L._rawBuffer);
+            entry.file=fname;
+            entry.rawExt=ext;
+            entry.isMain=L._isMain||false;
+          }
         } else {
           entry.missing=true;
           console.warn('saveProjectZip: splat buffer not cached for',L.name);
@@ -14318,11 +14364,18 @@ window.saveProjectZip = async function(){
     const _offlineNote = _bundledHtml
       ? (_en ? ' · offline-playable' : ' · オフライン再生対応')
       : '';
-    showUndoToast(missing>0
-      ?(_en?`⚠ ZIP save: ${missing} file(s) uncached (reload then save)`
-           :`⚠ ZIP保存: ${missing}件はファイル未キャッシュ（再読込後に保存してください）`)
-      :(_en?`✅ ZIP saved (${fileCount} file${fileCount===1?'':'s'} + project.json${_offlineNote})`
-           :`✅ ZIP保存完了 (${fileCount}ファイル + project.json${_offlineNote})`));
+    if(_skipSplatData){
+      const mb = Math.round(_totalSplatBytes / 1024 / 1024);
+      showUndoToast(_en
+        ? `📦 Lite save: skipped ${_skippedSplatCount} splat file(s) (${mb} MB) to fit phone memory. Re-attach after extracting.`
+        : `📦 軽量保存: スマホメモリ節約のため ${_skippedSplatCount} 件の Splat (${mb} MB) は除外。展開後に再アタッチしてください。`);
+    } else {
+      showUndoToast(missing>0
+        ?(_en?`⚠ ZIP save: ${missing} file(s) uncached (reload then save)`
+             :`⚠ ZIP保存: ${missing}件はファイル未キャッシュ（再読込後に保存してください）`)
+        :(_en?`✅ ZIP saved (${fileCount} file${fileCount===1?'':'s'} + project.json${_offlineNote})`
+             :`✅ ZIP保存完了 (${fileCount}ファイル + project.json${_offlineNote})`));
+    }
   } catch(e){ console.error(e); showUndoToast(T('zip-fail')+e.message); }
 };
 
