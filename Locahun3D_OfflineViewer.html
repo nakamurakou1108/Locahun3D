@@ -7157,6 +7157,15 @@ async function loadSplatFile(file){
         throw new Error('このファイル形式は Spark が認識できませんでした。対応形式: PLY / SPLAT / SPZ / KSPLAT / RAD / SOG / PCSOGS');
       }
     }
+    // .RAD is built around LoD chunks (matsutomato Qiita 2026-05): we
+    // unconditionally enable Spark's runtime LoD machinery when the
+    // extension is .rad, since that's the file format's headline
+    // feature. Local file picks use `fileBytes:` so paged streaming is
+    // a no-op, but the LoD walk still kicks in.
+    if(ext === 'rad'){
+      opts.lod = true;
+      opts.enableLod = true;
+    }
     // Remove previous main splat layer
     const _prevMain=layers.find(l=>l._isMain);
     if(_prevMain){ scene.remove(_prevMain.mesh); const _i=layers.indexOf(_prevMain); if(_i>=0)layers.splice(_i,1); }
@@ -11864,6 +11873,12 @@ async function loadAdditionalSplat(file){
         throw new Error('このファイル形式は Spark が認識できませんでした。対応形式: PLY / SPLAT / SPZ / KSPLAT / RAD / SOG / PCSOGS');
       }
     }
+    if(ext === 'rad'){
+      // Enable Spark's runtime LoD walk for .rad files — same rationale
+      // as in loadSplatFile().
+      opts.lod = true;
+      opts.enableLod = true;
+    }
     setMsg(T('building-3dgs')); setBar(60);
     const sm=new SplatMesh(opts);
     const flipped=(ext==='ply'||ext==='spz');
@@ -13124,6 +13139,12 @@ async function loadFromURL(url, displayName){
       // LoD ON for RAD scenes (the format's headline feature).
       opts.lod = true;
       opts.enableLod = true;
+      // RAD's chunked-streaming load path requires the `paged:true`
+      // option. Without it Spark falls back to whole-file fetch which
+      // defeats the entire point of the format. The Qiita reference
+      // article (matsutomato / 2026-05) showed initial-frame time
+      // dropping from ~60 s to ~5 s on a 5 M-splat scene with paged.
+      opts.paged = true;
       // Mirror loadSplatFile's existing main-splat-layer swap so user
       // doesn't end up with stacked meshes after multiple autoloads.
       const _prevMain = layers.find(l => l._isMain);
