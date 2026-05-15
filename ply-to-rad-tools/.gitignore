@@ -1,0 +1,16 @@
+# Spark リポジトリ(セットアップ時にクローンされる、巨大)
+spark/
+
+# 変換対象データ
+input/*.ply
+input/*.spz
+input/*.sog
+input/*.rad
+
+# 変換出力
+output/*.rad
+
+# OS ごみ
+.DS_Store
+Thumbs.db
+desktop.ini
