@@ -2826,7 +2826,7 @@ body.ar-active #dz{display:none !important;}
 
 <script type="module">
 import * as THREE from 'three';
-import { SplatMesh, SplatFileType, SplatLoader, SparkRenderer } from '@sparkjsdev/spark';
+import { SplatMesh, SplatFileType, SplatLoader, SparkRenderer, PagedSplats } from '@sparkjsdev/spark';
 // OBJLoader / GLTFLoader / FBXLoader are now LAZY-loaded on first use so
 // the splat viewer boots fully offline even when the addon CDN is down.
 // _addonLoader('OBJLoader') etc. resolves to the constructor or null on
@@ -3278,6 +3278,38 @@ try {
   const _detected = Object.keys(_SPLAT_FILE_TYPE_KEYS).filter(e => _splatFileTypeFor(e) !== undefined);
   console.info('[Locahun] Spark splat formats available:', _detected.join(', '));
 } catch(_){}
+
+// ── RAD JSON-header parser ──────────────────────────────────────────────
+// The .rad file is `RAD0IO\0\0` (8 bytes) + JSON header + chunks. The JSON
+// header has `{ "version": 1, "type": "gsplat", "count": N, ... }`. We need
+// `count` to know when streaming is "done" so the render loop can go idle.
+// Spark's WASM decoder gives us the same value via radMetaPromise eventually,
+// but parsing it ourselves up-front lets us gate the render loop from frame 1.
+function _parseRadHeaderCount(uint8){
+  try {
+    // Magic check
+    if(uint8.length < 64) return 0;
+    if(uint8[0]!==0x52||uint8[1]!==0x41||uint8[2]!==0x44||uint8[3]!==0x30) return 0;
+    // Brace-match the JSON between bytes 8 and ~1MB
+    const limit = Math.min(uint8.length, 1024*1024);
+    let depth = 0, inStr = false, esc = false, start = -1, end = -1;
+    for(let i = 8; i < limit; i++){
+      const c = uint8[i];
+      if(esc){ esc = false; continue; }
+      if(c === 0x5C){ esc = true; continue; } // backslash
+      if(c === 0x22){ inStr = !inStr; continue; } // "
+      if(inStr) continue;
+      if(c === 0x7B){ if(depth===0) start = i; depth++; continue; } // {
+      if(c === 0x7D){ depth--; if(depth===0){ end = i+1; break; } } // }
+    }
+    if(start < 0 || end < 0) return 0;
+    const jsonText = new TextDecoder('utf-8').decode(uint8.subarray(start, end));
+    const meta = JSON.parse(jsonText);
+    return (meta && typeof meta.count === 'number') ? meta.count : 0;
+  } catch(_) {
+    return 0;
+  }
+}
 
 // Debug surface — module-scoped vars exposed on window for in-browser probing.
 // Safe to leave on; just lets DevTools / smoke tests inspect engine state.
@@ -6617,12 +6649,27 @@ async function reloadAllSplatLayers(){
       };
       const _ft = _splatFileTypeFor(ext);
       if(_ft !== undefined) opts.fileType = _ft;
-      // RAD requires paged loader even for fileBytes (see loadSplatFile).
+      // RAD: build PagedSplats explicitly (see loadSplatFile for why).
       if(ext === 'rad'){
-        opts.paged = true;
+        const _radBytes = newBytes instanceof ArrayBuffer
+          ? new Uint8Array(newBytes)
+          : newBytes;
+        opts.paged = new PagedSplats({
+          fileBytes: _radBytes,
+          fileType: _splatFileTypeFor('rad'),
+        });
         opts.lod = true;
         opts.enableLod = true;
+        delete opts.fileBytes;
+        delete opts.fileType;
+        delete opts.coneFoveate;
+        delete opts.behindFoveate;
+        delete opts.coneFov;
+        delete opts.coneFov0;
       }
+      const _radTargetCount3 = (ext === 'rad')
+        ? _parseRadHeaderCount(newBytes instanceof ArrayBuffer ? new Uint8Array(newBytes) : newBytes)
+        : 0;
       let newMesh;
       try {
         newMesh = new SplatMesh(opts);
@@ -6630,6 +6677,7 @@ async function reloadAllSplatLayers(){
         console.warn('[reload-splat] SplatMesh build failed for layer', L.name, e);
         continue;
       }
+      if(_radTargetCount3 > 0) newMesh._radTargetCount = _radTargetCount3;
       tuneSplatMesh(newMesh);
       // Preserve the existing world transform exactly so the camera doesn't
       // jump and the user's framing stays. Copying the live transform also
@@ -6915,9 +6963,14 @@ function tuneSplatMesh(sm){
     //                (was the cause of visible "colour pop-in" on rotation)
     const _DEFENSE_LOD = !/[?&]lod=1/.test(location.search);
     const _DEFENSE_SH  = !/[?&]sh=ramp/.test(location.search);
+    // RAD meshes (paged streaming format) REQUIRE LoD to be ON — it's the
+    // whole point of the format. Without LoD, the chunk pager never fetches
+    // any chunks and the scene shows zero splats. So skip the LoD defense
+    // for paged meshes regardless of the ?lod=1 URL toggle.
+    const _isPaged = !!sm.paged;
     const _forceFullSh = () => {
       try{
-        if(_DEFENSE_LOD){
+        if(_DEFENSE_LOD && !_isPaged){
           // ── LOD runtime fields ──
           if('enableLod' in sm) sm.enableLod = false;
           if('lodScale'  in sm) sm.lodScale  = 1;
@@ -7164,25 +7217,50 @@ async function loadSplatFile(file){
       }
     }
     // .RAD is built around LoD chunks (matsutomato Qiita 2026-05): we
-    // unconditionally enable Spark's runtime LoD machinery when the
-    // extension is .rad, since that's the file format's headline
-    // feature. **`paged:true` is REQUIRED** even for local fileBytes —
-    // Spark 2.0.0 routes RAD parsing exclusively through SplatPager
-    // (it's the only class that calls decode_rad_header / fetchDecodeChunk
-    // with offset+bytes from the inline chunk table). Without paged:true
-    // the SplatMesh tries the non-paged reader, which has no RAD case,
-    // and the load silently fails. Confirmed by source inspection of
-    // @sparkjsdev/spark@2.0.0 (2026-05).
+    // need Spark's PagedSplats reader, which is the only code path that
+    // handles RAD. The naive `opts.paged = true` shortcut DOES NOT WORK
+    // here: SplatMesh's constructor builds `new PagedSplats({ rootUrl })`
+    // in that case — it never forwards `fileBytes` or `fileType`, so
+    // PagedSplats then throws "Unable to determine file type". The only
+    // supported way to feed fileBytes through paged is to construct the
+    // PagedSplats ourselves and pass it as `options.paged`. Confirmed by
+    // source inspection of @sparkjsdev/spark@2.0.0 (2026-05).
+    let _radTargetCount = 0;
     if(ext === 'rad'){
-      opts.paged = true;
+      const _radBytes = _splatBytes instanceof ArrayBuffer
+        ? new Uint8Array(_splatBytes)
+        : _splatBytes;
+      _radTargetCount = _parseRadHeaderCount(_radBytes);
+      opts.paged = new PagedSplats({
+        fileBytes: _radBytes,
+        fileType: _splatFileTypeFor('rad'),
+      });
       opts.lod = true;
       opts.enableLod = true;
+      // PagedSplats now owns the bytes; remove SplatMesh-level fileBytes
+      // so Spark doesn't try to double-parse.
+      delete opts.fileBytes;
+      delete opts.fileType;
+      // .RAD streaming uses Spark's LoD walker, which relies on the cone
+      // foveation parameters to decide which chunks to fetch. The defaults
+      // in SPARK_QUALITY_OPTS (`coneFoveate:0`, `coneFov:π`) were tuned for
+      // non-streamed splats to suppress visible LoD pop-in artefacts —
+      // those settings effectively tell the walker "everything is uniformly
+      // central, never split". For RAD that means only the root chunk ever
+      // loads and the scene stays at 1 splat forever. Remove the overrides
+      // so Spark's defaults (which DO trigger splits) take over.
+      delete opts.coneFoveate;
+      delete opts.behindFoveate;
+      delete opts.coneFov;
+      delete opts.coneFov0;
     }
     // Remove previous main splat layer
     const _prevMain=layers.find(l=>l._isMain);
     if(_prevMain){ scene.remove(_prevMain.mesh); const _i=layers.indexOf(_prevMain); if(_i>=0)layers.splice(_i,1); }
     if(splatMesh && !layers.find(l=>l.mesh===splatMesh)) scene.remove(splatMesh);
     splatMesh=new SplatMesh(opts);
+    // Stash target count for the render-loop streaming guard.
+    if(_radTargetCount > 0) splatMesh._radTargetCount = _radTargetCount;
     splatFlipped=(ext==='ply'||ext==='spz');
     // Tame oversized splats so a single near splat can't smear across the whole screen
     // during fast pans (the "rainbow streak" failure mode in big PortalCam scans).
@@ -11885,17 +11963,30 @@ async function loadAdditionalSplat(file){
         throw new Error('このファイル形式は Spark が認識できませんでした。対応形式: PLY / SPLAT / SPZ / KSPLAT / RAD / SOG / PCSOGS');
       }
     }
+    let _radTargetCount2 = 0;
     if(ext === 'rad'){
-      // Enable Spark's runtime LoD walk + paged loader for .rad files —
-      // same rationale as in loadSplatFile(): RAD parsing only lives on
-      // the SplatPager code path in Spark 2.0.0, so paged:true is
-      // mandatory even with fileBytes.
-      opts.paged = true;
+      // Same PagedSplats trick as in loadSplatFile() — see comment there.
+      const _radBytes = _splatBytes instanceof ArrayBuffer
+        ? new Uint8Array(_splatBytes)
+        : _splatBytes;
+      _radTargetCount2 = _parseRadHeaderCount(_radBytes);
+      opts.paged = new PagedSplats({
+        fileBytes: _radBytes,
+        fileType: _splatFileTypeFor('rad'),
+      });
       opts.lod = true;
       opts.enableLod = true;
+      delete opts.fileBytes;
+      delete opts.fileType;
+      // Strip foveation overrides — see loadSplatFile() for the rationale.
+      delete opts.coneFoveate;
+      delete opts.behindFoveate;
+      delete opts.coneFov;
+      delete opts.coneFov0;
     }
     setMsg(T('building-3dgs')); setBar(60);
     const sm=new SplatMesh(opts);
+    if(_radTargetCount2 > 0) sm._radTargetCount = _radTargetCount2;
     const flipped=(ext==='ply'||ext==='spz');
     tuneSplatMesh(sm);
     const L=addLayer({name:file.name.replace(/\.[^.]+$/,''),type:'splat',mesh:sm,rot:{x:0,y:0,z:0}});
@@ -12753,8 +12844,34 @@ function animate(now) {
     }
   }
 
+  // .RAD streaming guard: when a paged SplatMesh is present we MUST keep
+  // rendering. SparkRenderer's LoD walker runs inside renderer.render();
+  // without it being ticked, fetched chunks pile up in pager.lodTreeUpdates
+  // but never get consumed → record.rootPage is never set → next traversal
+  // can't request more chunks → the scene shows zero splats forever.
+  //
+  // We keep rendering as long as the paged splat hasn't reached its target
+  // splat count (`_radTargetCount`, stashed on the mesh at construction
+  // time from the RAD JSON header). After it does, we stop the continuous
+  // tick so the page goes idle; camera motion will wake it back up via
+  // the regular shouldRender path.
+  let hasPagedLoading = false;
+  if(typeof layers !== 'undefined' && layers && layers.length){
+    for(let i=0;i<layers.length;i++){
+      const _L = layers[i];
+      const _mesh = _L && _L.mesh;
+      const _pm = _mesh && _mesh.paged;
+      if(!_pm) continue;
+      const _target = _mesh._radTargetCount || 0;
+      if(_target === 0 || (_pm.numSplats||0) < _target){
+        hasPagedLoading = true;
+        break;
+      }
+    }
+  }
+
   const shouldRender = hasCamKey||hasDrag||hasJoy||hasMsrInteract||hasGamepad||
-                       splatStreaming||_renderDirtyTimer>0;
+                       splatStreaming||_renderDirtyTimer>0||hasPagedLoading;
 
   // ── Edge vignette during camera motion ──
   // Adaptive low-res mode is intentionally NOT used (caused visible flicker
@@ -14482,13 +14599,27 @@ async function restoreProject(project) {
               throw new Error('Spark が認識できない形式です');
             }
           }
-          // RAD-restored-from-ZIP needs paged loader too (same Spark 2.0.0 quirk).
+          // RAD-restored-from-ZIP needs an explicit PagedSplats (same Spark
+          // 2.0.0 quirk as loadSplatFile — paged:true alone strands fileBytes).
+          // We have the raw buffer right here in `bufCopy`, so feed it in
+          // directly instead of going through the blob: URL.
           if(ext === 'rad'){
-            opts.paged = true;
+            opts.paged = new PagedSplats({
+              fileBytes: new Uint8Array(bufCopy),
+              fileType: _splatFileTypeFor('rad'),
+            });
             opts.lod = true;
             opts.enableLod = true;
+            delete opts.url;
+            delete opts.fileType;
+            delete opts.coneFoveate;
+            delete opts.behindFoveate;
+            delete opts.coneFov;
+            delete opts.coneFov0;
           }
+          const _radTargetCount4 = (ext === 'rad') ? _parseRadHeaderCount(new Uint8Array(bufCopy)) : 0;
           mesh=new SplatMesh(opts);
+          if(_radTargetCount4 > 0) mesh._radTargetCount = _radTargetCount4;
           // Mark _loadFlipped on the entry so the layer constructor below
           // picks it up; orientation will be composed via applyLayerFlipQuat.
           entry._loadFlipped = (ext==='ply'||ext==='spz');
@@ -16253,7 +16384,11 @@ function dispatchFile(f){
 async function dispatchFiles(fileList){
   const files=Array.from(fileList||[]).filter(Boolean);
   if(!files.length) return;
-  const splatExts=['splat','ply','spz','ksplat'];
+  // Every splat extension the viewer can actually load. `.rad`, `.sog`,
+  // `.pcsogs`, `.pcsogszip` were missing here — the file picker `accept`
+  // attribute listed them, but the dispatcher silently dropped them on
+  // the floor, so the user saw "nothing happens" when dropping a .rad.
+  const splatExts=['splat','ply','spz','ksplat','rad','sog','pcsogs','pcsogszip'];
   const hasMain = !!layers.find(l=>l._isMain);
   for(let i=0;i<files.length;i++){
     const f=files[i];
