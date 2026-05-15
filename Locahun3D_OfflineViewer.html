@@ -925,14 +925,12 @@ body{position:fixed;top:0;left:0;}
    keeps full layer-editing functionality. */
 @media (pointer:coarse) and (any-hover:none) and (max-width: 600px),
        (pointer:coarse) and (any-hover:none) and (max-height: 500px){
-  /* Smartphone bottom bar: keep ONLY 📐 測定 visible (per user request
-     2026-05 — measurement must be available on every device, including
-     phones). Other cbar buttons (📷 カメラ / 🌅 環境 / 🗺 マップ / ❓ 使い方)
-     are still hidden because there is not enough horizontal room next to
-     the joystick. The cbar container itself stays alive so #btnMeasure
-     keeps its layout slot; we just hide the siblings individually. */
-  #hud .cbar > button:not(#btnMeasure){display:none !important;}
-  /* Center the lone 📐 button so it doesn't anchor to the cbar's
+  /* Smartphone bottom bar: keep 📐 測定 and 📷 カメラ visible (per user
+     requests 2026-05 — both tools must be available on every device).
+     Other cbar buttons (🌅 環境 / 🗺 マップ / ❓ 使い方) stay hidden because
+     there is not enough horizontal room next to the joystick. */
+  #hud .cbar > button:not(#btnMeasure):not(#btnCamTool){display:none !important;}
+  /* Center the surviving buttons so they don't anchor to the cbar's
      original (off-center) origin. */
   #hud .cbar{justify-content:center !important;}
   :root{ --lp-width: 0px !important; }
