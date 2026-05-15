@@ -1,0 +1,6 @@
+# Windows batch files MUST be CRLF — cmd.exe is unpredictable with LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts must be LF.
+*.sh text eol=lf

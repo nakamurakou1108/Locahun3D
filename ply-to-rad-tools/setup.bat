@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 1>NUL 2>&1
+REM ^ UTF-8 console so the JP comments and prompts render correctly.
 REM ============================================================
 REM  PLY -> RAD 変換ツールキット 初回セットアップ (Windows)
 REM ============================================================
