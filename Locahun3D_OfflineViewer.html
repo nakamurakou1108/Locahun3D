@@ -925,7 +925,16 @@ body{position:fixed;top:0;left:0;}
    keeps full layer-editing functionality. */
 @media (pointer:coarse) and (any-hover:none) and (max-width: 600px),
        (pointer:coarse) and (any-hover:none) and (max-height: 500px){
-  #hud .cbar{display:none !important;}
+  /* Smartphone bottom bar: keep ONLY 📐 測定 visible (per user request
+     2026-05 — measurement must be available on every device, including
+     phones). Other cbar buttons (📷 カメラ / 🌅 環境 / 🗺 マップ / ❓ 使い方)
+     are still hidden because there is not enough horizontal room next to
+     the joystick. The cbar container itself stays alive so #btnMeasure
+     keeps its layout slot; we just hide the siblings individually. */
+  #hud .cbar > button:not(#btnMeasure){display:none !important;}
+  /* Center the lone 📐 button so it doesn't anchor to the cbar's
+     original (off-center) origin. */
+  #hud .cbar{justify-content:center !important;}
   :root{ --lp-width: 0px !important; }
   #layer-panel,
   #lp-footer-bar,
@@ -4484,6 +4493,13 @@ function _closeMeasureOnly(){
   msr.rightHold=false;
   msr.markerA.visible=msr.markerB.visible=msr.line.visible=false;
   msr.step=0; msr.dragging=null; msr.axisDragging=null;
+  // Clear any in-flight touch long-press state too (could leak if user
+  // taps "終了" mid-press).
+  if(typeof _msrLongPressTimer !== 'undefined' && _msrLongPressTimer){
+    clearTimeout(_msrLongPressTimer); _msrLongPressTimer = null;
+  }
+  if(typeof _msrLongPressId !== 'undefined') _msrLongPressId = -1;
+  if(typeof _msrPlacingId   !== 'undefined') _msrPlacingId   = -1;
 }
 
 // ══════════════════════════════════════════════════
@@ -16068,11 +16084,80 @@ canvas.addEventListener('wheel',e=>{
 
 // Touch look
 let tlId=-1,tlX=0,tlY=0;
+// ── Long-press tap placement for measure mode ──
+// In measure mode a finger held still for ~350 ms on the canvas enters
+// "preview placement" — mirrors the desktop left-click-hold flow. The
+// preview marker snaps to the nearest point-cloud point via pickWorldPos.
+// Moving the finger more than 12 px before the timer fires cancels the
+// hook and falls back to the normal touch-rotate. Lifting the finger
+// after the preview is visible commits the placement.
+let _msrLongPressTimer = null;
+let _msrLongPressId = -1;    // touch identifier currently arming long-press
+let _msrLongPressX = 0;
+let _msrLongPressY = 0;
+let _msrPlacingId = -1;      // touch identifier that successfully entered placement
+const _MSR_LONG_PRESS_MS = 350;
+const _MSR_LONG_PRESS_MOVE_PX = 12;
+function _cancelMsrLongPress(){
+  if(_msrLongPressTimer){ clearTimeout(_msrLongPressTimer); _msrLongPressTimer = null; }
+  _msrLongPressId = -1;
+}
+
 canvas.addEventListener('touchstart',e=>{
+  // Measure-mode long-press scheduler — only when no placement is already
+  // in progress AND a single finger is going down.
+  if(msr.active && _msrPlacingId === -1 && _msrLongPressId === -1 && e.changedTouches.length){
+    const t0 = e.changedTouches[0];
+    _msrLongPressId = t0.identifier;
+    _msrLongPressX = t0.clientX;
+    _msrLongPressY = t0.clientY;
+    _msrLongPressTimer = setTimeout(() => {
+      _msrLongPressTimer = null;
+      if(_msrLongPressId === -1) return;
+      // Promote to active placement
+      _msrPlacingId = _msrLongPressId;
+      _msrLongPressId = -1;
+      msr.rightHold = true;
+      // Release the touch-rotate finger so look-around doesn't spin while
+      // the user adjusts the placement.
+      if(tlId === _msrPlacingId) tlId = -1;
+      const pos = pickWorldPos(_msrLongPressX, _msrLongPressY);
+      updatePreview(pos);
+      // Haptic feedback so the user knows the long-press registered
+      try { if(navigator.vibrate) navigator.vibrate(15); } catch(_){}
+      markDirty(6);
+    }, _MSR_LONG_PRESS_MS);
+  }
   for(const t of e.changedTouches)
     if(t.clientX>innerWidth*0.4){tlId=t.identifier;tlX=t.clientX;tlY=t.clientY;}
 },{passive:true});
 canvas.addEventListener('touchmove',e=>{
+  // ── Measure-mode placement preview update (active long-press) ──
+  if(_msrPlacingId !== -1){
+    for(const t of e.changedTouches){
+      if(t.identifier === _msrPlacingId){
+        const pos = pickWorldPos(t.clientX, t.clientY);
+        updatePreview(pos);
+        markDirty(3);
+        // Suppress the look-rotate path for the placement finger so
+        // sliding to reposition doesn't also spin the camera.
+        if(t.identifier === tlId){ tlX = t.clientX; tlY = t.clientY; }
+        return;
+      }
+    }
+  }
+  // ── Long-press arm-cancel: if the finger moves too far before the
+  //    timer fires, treat as drag-to-rotate instead of a long-press. ──
+  if(_msrLongPressId !== -1){
+    for(const t of e.changedTouches){
+      if(t.identifier === _msrLongPressId){
+        if(Math.hypot(t.clientX - _msrLongPressX, t.clientY - _msrLongPressY) > _MSR_LONG_PRESS_MOVE_PX){
+          _cancelMsrLongPress();
+        }
+        break;
+      }
+    }
+  }
   for(const t of e.changedTouches)
     if(t.identifier===tlId){
       const dx = (t.clientX - tlX) * 0.004;
@@ -16105,8 +16190,37 @@ canvas.addEventListener('touchmove',e=>{
     }
 },{passive:true});
 canvas.addEventListener('touchend',e=>{
+  // Commit a measure-mode placement if the finger that's being lifted
+  // is the one currently holding the preview.
+  if(_msrPlacingId !== -1){
+    for(const t of e.changedTouches){
+      if(t.identifier === _msrPlacingId){
+        _msrPlacingId = -1;
+        msr.rightHold = false;
+        commitPreview();
+        markDirty(6);
+        break;
+      }
+    }
+  }
+  // Cancel any pending long-press arming when the same finger lifts.
+  if(_msrLongPressId !== -1){
+    for(const t of e.changedTouches){
+      if(t.identifier === _msrLongPressId){ _cancelMsrLongPress(); break; }
+    }
+  }
   for(const t of e.changedTouches)if(t.identifier===tlId){ tlId=-1; markDirty(6); }
 });
+canvas.addEventListener('touchcancel',e=>{
+  // Abort placement / arming on touchcancel (e.g. iOS palm rejection).
+  if(_msrPlacingId !== -1){
+    _msrPlacingId = -1;
+    msr.rightHold = false;
+    if(msr.previewMarker) msr.previewMarker.visible = false;
+    markDirty(6);
+  }
+  _cancelMsrLongPress();
+},{passive:true});
 
 // Joystick
 // Centre / radius constants match the 1.6× CSS dimensions: container is
