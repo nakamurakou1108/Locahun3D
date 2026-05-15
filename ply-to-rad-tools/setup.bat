@@ -2,7 +2,7 @@
 REM ============================================================
 REM  PLY -> RAD 変換ツールキット 初回セットアップ (Windows)
 REM ============================================================
-REM   1. Node / Rust / Git の存在チェック
+REM   1. Node / Rust / Git の存在チェック (Rust は無ければ自動導入)
 REM   2. Spark リポジトリをクローン
 REM   3. 依存をインストール + Rust ツールチェーンをビルド
 REM
@@ -38,18 +38,7 @@ if errorlevel 1 (
 for /f "delims=" %%v in ('npm --version') do set NPM_VER=%%v
 echo [OK] npm       : !NPM_VER!
 
-REM ── 3. cargo (Rust) の確認 ──
-where cargo >nul 2>&1
-if errorlevel 1 (
-  echo [NG] Rust の cargo が見つかりません。
-  echo      https://rustup.rs/ から rustup-init.exe を実行し、
-  echo      ターミナルを再起動してから再度このスクリプトを実行してください。
-  goto :error
-)
-for /f "delims=" %%v in ('cargo --version') do set CARGO_VER=%%v
-echo [OK] Rust cargo: !CARGO_VER!
-
-REM ── 4. git の確認 ──
+REM ── 3. git の確認 ──
 where git >nul 2>&1
 if errorlevel 1 (
   echo [NG] Git が見つかりません。
@@ -58,6 +47,54 @@ if errorlevel 1 (
 )
 for /f "delims=" %%v in ('git --version') do set GIT_VER=%%v
 echo [OK] Git       : !GIT_VER!
+
+REM ── 4. cargo (Rust) の確認 / 無ければ自動インストール ──
+where cargo >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo [INFO] Rust ^(cargo^) が見つかりません。自動インストールを行います。
+  echo        ^(rustup-init.exe をダウンロードしてデフォルト構成でインストール^)
+  echo.
+
+  set "RUSTUP_TMP=%TEMP%\rustup-init.exe"
+
+  echo [INFO] rustup-init.exe をダウンロード中...
+  where curl >nul 2>&1
+  if errorlevel 1 (
+    echo [NG] curl コマンドが見つかりません ^(Windows 10 1803+ に標準搭載^)。
+    echo      手動で https://rustup.rs/ からインストールしてください。
+    goto :error
+  )
+  curl.exe -fSL -o "!RUSTUP_TMP!" https://win.rustup.rs/x86_64
+  if errorlevel 1 (
+    echo [NG] rustup-init.exe のダウンロードに失敗しました。
+    echo      ネットワークを確認するか、手動で https://rustup.rs/ から導入してください。
+    goto :error
+  )
+
+  echo [INFO] Rust をインストール中... ^(数分かかります^)
+  "!RUSTUP_TMP!" -y --default-toolchain stable --profile minimal --no-modify-path
+  set RUSTUP_EXIT=!errorlevel!
+  del /f /q "!RUSTUP_TMP!" >nul 2>&1
+  if !RUSTUP_EXIT! neq 0 (
+    echo [NG] Rust インストールに失敗しました ^(exit !RUSTUP_EXIT!^)。
+    echo      手動で https://rustup.rs/ から導入してください。
+    goto :error
+  )
+
+  REM PATH に cargo bin を追加(現セッション用)
+  set "PATH=%USERPROFILE%\.cargo\bin;!PATH!"
+
+  where cargo >nul 2>&1
+  if errorlevel 1 (
+    echo [NG] Rust インストール直後にも cargo が見つかりません。
+    echo      一度ターミナルを閉じて setup.bat を再実行してください。
+    goto :error
+  )
+  echo [OK] Rust 自動インストール完了
+)
+for /f "delims=" %%v in ('cargo --version') do set CARGO_VER=%%v
+echo [OK] Rust cargo: !CARGO_VER!
 
 echo.
 echo すべての必要環境が揃っています。

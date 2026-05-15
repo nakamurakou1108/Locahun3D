@@ -2,7 +2,7 @@
 # ============================================================
 #  PLY -> RAD 変換ツールキット 初回セットアップ (macOS / Linux)
 # ============================================================
-#   1. Node / Rust / Git の存在チェック
+#   1. Node / Rust / Git の存在チェック (Rust は無ければ自動導入)
 #   2. Spark リポジトリをクローン
 #   3. 依存をインストール + Rust ツールチェーンをビルド
 # ============================================================
@@ -30,17 +30,7 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 echo "[OK] npm       : $(npm --version)"
 
-# ── 3. cargo (Rust) ──
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "[NG] Rust の cargo が見つかりません。"
-  echo "     以下を実行してから再度このスクリプトを起動してください:"
-  echo "       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-  echo "       source \$HOME/.cargo/env"
-  exit 1
-fi
-echo "[OK] Rust cargo: $(cargo --version)"
-
-# ── 4. git ──
+# ── 3. git ──
 if ! command -v git >/dev/null 2>&1; then
   echo "[NG] Git が見つかりません。"
   echo "     macOS: xcode-select --install"
@@ -48,6 +38,37 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 echo "[OK] Git       : $(git --version)"
+
+# ── 4. cargo (Rust) — 無ければ自動インストール ──
+if ! command -v cargo >/dev/null 2>&1; then
+  # 既にインストール済みだが PATH が通っていない可能性
+  if [ -x "$HOME/.cargo/bin/cargo" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+  fi
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo
+  echo "[INFO] Rust (cargo) が見つかりません。自動インストールを行います。"
+  echo "       (rustup-init を非対話モードでデフォルト構成インストール)"
+  echo
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "[NG] curl コマンドが見つかりません。手動で https://rustup.rs/ から導入してください。"
+    exit 1
+  fi
+
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path
+  export PATH="$HOME/.cargo/bin:$PATH"
+
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "[NG] Rust インストール後も cargo が見つかりません。"
+    echo "     新しいターミナルを開き直して再実行してください。"
+    exit 1
+  fi
+  echo "[OK] Rust 自動インストール完了"
+fi
+echo "[OK] Rust cargo: $(cargo --version)"
 
 echo
 echo "すべての必要環境が揃っています。"

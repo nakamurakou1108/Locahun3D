@@ -56,8 +56,10 @@ Desktop/
 | ツール | 用途 | インストール |
 |---|---|---|
 | **Node.js 18+** | npm スクリプト実行 | <https://nodejs.org/ja> |
-| **Rust(rustup)** | Spark の build-lod は Rust 製 | <https://rustup.rs/> |
+| **Rust(rustup)** | Spark の build-lod は Rust 製 | **未導入なら setup が自動でインストール** |
 | **Git** | Spark リポジトリのクローン | <https://git-scm.com/> |
+
+> Rust は `setup.bat` / `setup.sh` が `rustup-init` を自動取得して非対話モードで導入します(stable / minimal プロファイル)。手動で入れたい場合は <https://rustup.rs/> から。
 
 ## 変換時間とサイズの目安
 
@@ -88,9 +90,10 @@ https://locahun3d.nakamurakou1108.workers.dev/?autoload=https://your-cdn.com/sce
 
 ## トラブルシューティング
 
-### `setup.bat` で「'cargo' は、内部コマンドまたは外部コマンドとして認識されていません」
+### Rust 自動インストールに失敗した
 
-Rust が未インストールです。<https://rustup.rs/> から `rustup-init.exe` を実行 →
+ネットワーク制限などで `setup.bat` 内の自動インストールが失敗した場合は、
+<https://rustup.rs/> から `rustup-init.exe` を手動で実行 →
 ターミナル(コマンドプロンプト)を**完全に閉じて再起動**してから `setup.bat` を再実行してください。
 
 ### Node.js のバージョンエラー
