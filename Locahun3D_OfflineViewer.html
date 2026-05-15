@@ -1009,12 +1009,12 @@ body{position:fixed;top:0;left:0;}
      would silently fail in modern Chrome/Safari; visually-hidden via
      clip-path keeps the picker working reliably across browsers. -->
 <input type="file" id="lfi-any"
-  accept=".splat,.ply,.spz,.ksplat,.rad,.obj,.gltf,.glb,.fbx,.zip" multiple
+  accept=".splat,.ply,.spz,.ksplat,.rad,.sog,.pcsogs,.pcsogszip,.obj,.gltf,.glb,.fbx,.zip" multiple
   style="position:fixed;left:0;top:0;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
 <!-- Legacy hidden inputs kept for back-compat with code that references
      them by id; the new flow uses #lfi-any. Same visually-hidden pattern
      so a programmatic .click() still pops the picker on iOS Safari. -->
-<input type="file" id="lfi-splat" accept=".splat,.ply,.spz,.ksplat,.rad" multiple
+<input type="file" id="lfi-splat" accept=".splat,.ply,.spz,.ksplat,.rad,.sog,.pcsogs,.pcsogszip" multiple
   style="position:fixed;left:0;top:0;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
 <input type="file" id="lfi-obj" accept=".obj,.gltf,.glb,.fbx"
   style="position:fixed;left:0;top:0;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
@@ -2526,7 +2526,7 @@ body.ar-active #dz{display:none !important;}
          Safari reliably opens the native picker on programmatic .click().
          display:none here had been silently blocking the picker on some
          iOS Safari versions. -->
-    <input type="file" id="fi" accept=".splat,.ply,.spz,.ksplat,.rad,.obj,.gltf,.glb,.fbx,.zip" multiple
+    <input type="file" id="fi" accept=".splat,.ply,.spz,.ksplat,.rad,.sog,.pcsogs,.pcsogszip,.obj,.gltf,.glb,.fbx,.zip" multiple
            style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
   </div>
   <label class="dz-portalcam" id="dz-portalcam-label" title="Portalcam で取得した 3DGS は 90° X 軸回転で書き出されるため、自動で補正します">
@@ -3238,27 +3238,27 @@ scene = new THREE.Scene();
 const sparkRenderer = new SparkRenderer({ renderer });
 scene.add(sparkRenderer);
 
-// ── Spark file-type lookup with .RAD forward-compat ──
-// World Labs introduced the .RAD (RADiance field) chunked-streaming
-// format integrated into Spark 2.0. As of the version pinned in our
-// importmap (2.0.0 on jsdelivr), SplatFileType.RAD may not be a
-// shipped enum value yet — Spark publishes RAD support on a slightly
-// staggered cadence vs the npm release.
+// ── Spark file-type lookup (extension → SplatFileType enum) ──
+// Spark 2.0.0 ships with 7 splat file types:
+//   PLY / SPZ / SPLAT / KSPLAT / PCSOGS / PCSOGSZIP / RAD
+// Confirmed by direct inspection of the published dist module —
+// each value is registered both as SplatFileType.<KEY> and via the
+// internal extensionToFileType("rad"|"pcsogs"|...) helper.
 //
-// To make the viewer forward-compatible:
-//   • _splatFileTypeFor(ext) returns the Spark enum value for the
-//     given extension, or `undefined` if Spark doesn't know it.
-//   • Probes multiple potential key names ('RAD', 'RADIANCE', etc.)
-//     so a future SDK rename doesn't silently break the dispatch.
-//   • Logs the resolved keys at startup so devtools shows which
-//     formats this build of Spark actually supports.
+// _splatFileTypeFor(ext) returns the enum value for the given file
+// extension, or undefined if Spark doesn't know it. The probe walks
+// multiple candidate key names so a future SDK rename doesn't break
+// the dispatch silently (we tried RADIANCE / RADIANCE_FIELD before
+// the official key turned out to be just "RAD").
 const _SPLAT_FILE_TYPE_KEYS = {
-  'splat':  ['SPLAT'],
-  'ply':    ['PLY'],
-  'ksplat': ['KSPLAT'],
-  'spz':    ['SPZ'],
-  'sog':    ['SOG'],
-  'rad':    ['RAD','RADIANCE','RADIANCE_FIELD'],
+  'splat':     ['SPLAT'],
+  'ply':       ['PLY'],
+  'ksplat':    ['KSPLAT'],
+  'spz':       ['SPZ'],
+  'sog':       ['SOG','PCSOGS'],          // .sog files use the PCSOGS path
+  'pcsogs':    ['PCSOGS'],
+  'pcsogszip': ['PCSOGSZIP'],
+  'rad':       ['RAD','RADIANCE','RADIANCE_FIELD'],
 };
 function _splatFileTypeFor(ext){
   if(!ext) return undefined;
@@ -7154,7 +7154,7 @@ async function loadSplatFile(file){
         // .RAD is the streaming format from World Labs (Spark 2.x). If
         // this Spark build hasn't shipped SplatFileType.RAD yet, fail
         // loud rather than silently treating it as PLY.
-        throw new Error('.RAD は現バージョンの Spark ではまだ未対応です。SDK 更新をお待ちください。');
+        throw new Error('このファイル形式は Spark が認識できませんでした。対応形式: PLY / SPLAT / SPZ / KSPLAT / RAD / SOG / PCSOGS');
       }
     }
     // Remove previous main splat layer
@@ -11861,7 +11861,7 @@ async function loadAdditionalSplat(file){
       const _ft = _splatFileTypeFor(ext);
       if(_ft !== undefined) opts.fileType = _ft;
       else if(ext === 'rad'){
-        throw new Error('.RAD は現バージョンの Spark ではまだ未対応です。SDK 更新をお待ちください。');
+        throw new Error('このファイル形式は Spark が認識できませんでした。対応形式: PLY / SPLAT / SPZ / KSPLAT / RAD / SOG / PCSOGS');
       }
     }
     setMsg(T('building-3dgs')); setBar(60);
@@ -13113,7 +13113,7 @@ async function loadFromURL(url, displayName){
     if(ext === 'rad'){
       if(ft === undefined){
         if(typeof hideLd === 'function') hideLd();
-        if(typeof showUndoToast === 'function') showUndoToast('.RAD は現バージョンの Spark ではまだ未対応です。SDK 更新をお待ちください。');
+        if(typeof showUndoToast === 'function') showUndoToast('このファイル形式は Spark が認識できませんでした。対応形式: PLY / SPLAT / SPZ / KSPLAT / RAD / SOG / PCSOGS');
         return;
       }
       // Stream-load path. Construct a SplatMesh directly with `url:` —
@@ -14443,7 +14443,7 @@ async function restoreProject(project) {
             const _ft = _splatFileTypeFor(ext);
             if(_ft !== undefined) opts.fileType = _ft;
             else if(ext === 'rad'){
-              throw new Error('.RAD は現バージョンの Spark ではまだ未対応です');
+              throw new Error('Spark が認識できない形式です');
             }
           }
           mesh=new SplatMesh(opts);
