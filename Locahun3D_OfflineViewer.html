@@ -6617,6 +6617,12 @@ async function reloadAllSplatLayers(){
       };
       const _ft = _splatFileTypeFor(ext);
       if(_ft !== undefined) opts.fileType = _ft;
+      // RAD requires paged loader even for fileBytes (see loadSplatFile).
+      if(ext === 'rad'){
+        opts.paged = true;
+        opts.lod = true;
+        opts.enableLod = true;
+      }
       let newMesh;
       try {
         newMesh = new SplatMesh(opts);
@@ -7160,9 +7166,15 @@ async function loadSplatFile(file){
     // .RAD is built around LoD chunks (matsutomato Qiita 2026-05): we
     // unconditionally enable Spark's runtime LoD machinery when the
     // extension is .rad, since that's the file format's headline
-    // feature. Local file picks use `fileBytes:` so paged streaming is
-    // a no-op, but the LoD walk still kicks in.
+    // feature. **`paged:true` is REQUIRED** even for local fileBytes —
+    // Spark 2.0.0 routes RAD parsing exclusively through SplatPager
+    // (it's the only class that calls decode_rad_header / fetchDecodeChunk
+    // with offset+bytes from the inline chunk table). Without paged:true
+    // the SplatMesh tries the non-paged reader, which has no RAD case,
+    // and the load silently fails. Confirmed by source inspection of
+    // @sparkjsdev/spark@2.0.0 (2026-05).
     if(ext === 'rad'){
+      opts.paged = true;
       opts.lod = true;
       opts.enableLod = true;
     }
@@ -11874,8 +11886,11 @@ async function loadAdditionalSplat(file){
       }
     }
     if(ext === 'rad'){
-      // Enable Spark's runtime LoD walk for .rad files — same rationale
-      // as in loadSplatFile().
+      // Enable Spark's runtime LoD walk + paged loader for .rad files —
+      // same rationale as in loadSplatFile(): RAD parsing only lives on
+      // the SplatPager code path in Spark 2.0.0, so paged:true is
+      // mandatory even with fileBytes.
+      opts.paged = true;
       opts.lod = true;
       opts.enableLod = true;
     }
@@ -14466,6 +14481,12 @@ async function restoreProject(project) {
             else if(ext === 'rad'){
               throw new Error('Spark が認識できない形式です');
             }
+          }
+          // RAD-restored-from-ZIP needs paged loader too (same Spark 2.0.0 quirk).
+          if(ext === 'rad'){
+            opts.paged = true;
+            opts.lod = true;
+            opts.enableLod = true;
           }
           mesh=new SplatMesh(opts);
           // Mark _loadFlipped on the entry so the layer constructor below
