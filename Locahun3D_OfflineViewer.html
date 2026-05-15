@@ -678,6 +678,18 @@ body{position:fixed;top:0;left:0;}
   position:fixed;bottom:60px;right:14px;
   background:rgba(26,26,28,.97);border:1px solid rgba(255,255,255,.1);border-radius:10px;
   padding:12px 16px;z-index:60;min-width:200px;display:none;
+  /* Phone landscape has <400 px of usable height between topbar and cbar.
+     The full quality / FPS panel is ~480 px tall (presets + 設定 rows +
+     処理能力モニター + 解像度), so it overflows the viewport top and the
+     user can't scroll a position:fixed element by default. Capping the
+     height + enabling internal scrolling fixes the "見切れて scroll
+     できない" complaint without resizing the panel on desktop where the
+     calc() room is plenty. dvh accounts for the mobile URL bar showing /
+     hiding so the cap stays correct as Chrome's chrome shrinks. */
+  max-height:calc(100dvh - 110px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
 }
 /* Always-visible quality / FPS indicator (replaces the cbar 画質 button).
    Pinned just below the topbar at the right edge. Hover lifts it, click
