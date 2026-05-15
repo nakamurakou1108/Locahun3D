@@ -73,7 +73,7 @@ if errorlevel 1 (
   )
 
   echo [INFO] Rust をインストール中... ^(数分かかります^)
-  "!RUSTUP_TMP!" -y --default-toolchain stable --profile minimal --no-modify-path
+  "!RUSTUP_TMP!" -y --default-toolchain stable --profile minimal
   set RUSTUP_EXIT=!errorlevel!
   del /f /q "!RUSTUP_TMP!" >nul 2>&1
   if !RUSTUP_EXIT! neq 0 (

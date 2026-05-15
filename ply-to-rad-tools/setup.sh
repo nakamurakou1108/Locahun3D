@@ -58,7 +58,7 @@ if ! command -v cargo >/dev/null 2>&1; then
     exit 1
   fi
 
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
   export PATH="$HOME/.cargo/bin:$PATH"
 
   if ! command -v cargo >/dev/null 2>&1; then

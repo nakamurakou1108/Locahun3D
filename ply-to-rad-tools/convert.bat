@@ -16,6 +16,11 @@ REM ============================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+REM cargo bin にパスが通っていないターミナルで実行されたケースの保険
+if exist "%USERPROFILE%\.cargoin\cargo.exe" (
+  set "PATH=%USERPROFILE%\.cargoin;%PATH%"
+)
+
 REM ── Spark のセットアップ確認 ──
 if not exist "spark\node_modules" (
   echo.

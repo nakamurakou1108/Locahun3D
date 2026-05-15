@@ -15,6 +15,11 @@
 set -e
 cd "$(dirname "$0")"
 
+# cargo bin が PATH に無いシェルから実行されたケースの保険
+if [ -x "$HOME/.cargo/bin/cargo" ] && ! command -v cargo >/dev/null 2>&1; then
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
 # ── Spark セットアップ確認 ──
 if [ ! -d "spark/node_modules" ]; then
   echo
