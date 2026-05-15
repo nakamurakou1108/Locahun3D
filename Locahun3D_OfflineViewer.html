@@ -1009,12 +1009,12 @@ body{position:fixed;top:0;left:0;}
      would silently fail in modern Chrome/Safari; visually-hidden via
      clip-path keeps the picker working reliably across browsers. -->
 <input type="file" id="lfi-any"
-  accept=".splat,.ply,.spz,.ksplat,.obj,.gltf,.glb,.fbx,.zip" multiple
+  accept=".splat,.ply,.spz,.ksplat,.rad,.obj,.gltf,.glb,.fbx,.zip" multiple
   style="position:fixed;left:0;top:0;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
 <!-- Legacy hidden inputs kept for back-compat with code that references
      them by id; the new flow uses #lfi-any. Same visually-hidden pattern
      so a programmatic .click() still pops the picker on iOS Safari. -->
-<input type="file" id="lfi-splat" accept=".splat,.ply,.spz,.ksplat" multiple
+<input type="file" id="lfi-splat" accept=".splat,.ply,.spz,.ksplat,.rad" multiple
   style="position:fixed;left:0;top:0;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
 <input type="file" id="lfi-obj" accept=".obj,.gltf,.glb,.fbx"
   style="position:fixed;left:0;top:0;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
@@ -2526,7 +2526,7 @@ body.ar-active #dz{display:none !important;}
          Safari reliably opens the native picker on programmatic .click().
          display:none here had been silently blocking the picker on some
          iOS Safari versions. -->
-    <input type="file" id="fi" accept=".splat,.ply,.spz,.ksplat,.obj,.gltf,.glb,.fbx,.zip" multiple
+    <input type="file" id="fi" accept=".splat,.ply,.spz,.ksplat,.rad,.obj,.gltf,.glb,.fbx,.zip" multiple
            style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
   </div>
   <label class="dz-portalcam" id="dz-portalcam-label" title="Portalcam で取得した 3DGS は 90° X 軸回転で書き出されるため、自動で補正します">
@@ -3237,6 +3237,47 @@ scene = new THREE.Scene();
 // because Spark's accumulator never executes).
 const sparkRenderer = new SparkRenderer({ renderer });
 scene.add(sparkRenderer);
+
+// ── Spark file-type lookup with .RAD forward-compat ──
+// World Labs introduced the .RAD (RADiance field) chunked-streaming
+// format integrated into Spark 2.0. As of the version pinned in our
+// importmap (2.0.0 on jsdelivr), SplatFileType.RAD may not be a
+// shipped enum value yet — Spark publishes RAD support on a slightly
+// staggered cadence vs the npm release.
+//
+// To make the viewer forward-compatible:
+//   • _splatFileTypeFor(ext) returns the Spark enum value for the
+//     given extension, or `undefined` if Spark doesn't know it.
+//   • Probes multiple potential key names ('RAD', 'RADIANCE', etc.)
+//     so a future SDK rename doesn't silently break the dispatch.
+//   • Logs the resolved keys at startup so devtools shows which
+//     formats this build of Spark actually supports.
+const _SPLAT_FILE_TYPE_KEYS = {
+  'splat':  ['SPLAT'],
+  'ply':    ['PLY'],
+  'ksplat': ['KSPLAT'],
+  'spz':    ['SPZ'],
+  'sog':    ['SOG'],
+  'rad':    ['RAD','RADIANCE','RADIANCE_FIELD'],
+};
+function _splatFileTypeFor(ext){
+  if(!ext) return undefined;
+  const keys = _SPLAT_FILE_TYPE_KEYS[String(ext).toLowerCase()];
+  if(!keys) return undefined;
+  for(const k of keys){
+    if(SplatFileType && Object.prototype.hasOwnProperty.call(SplatFileType, k)){
+      return SplatFileType[k];
+    }
+  }
+  return undefined;
+}
+// Surface which formats this Spark build understands. Helps debug
+// "RAD doesn't load" reports — if RAD isn't logged here, the bundled
+// Spark version hasn't shipped it yet.
+try {
+  const _detected = Object.keys(_SPLAT_FILE_TYPE_KEYS).filter(e => _splatFileTypeFor(e) !== undefined);
+  console.info('[Locahun] Spark splat formats available:', _detected.join(', '));
+} catch(_){}
 
 // Debug surface — module-scoped vars exposed on window for in-browser probing.
 // Safe to leave on; just lets DevTools / smoke tests inspect engine state.
@@ -6574,10 +6615,8 @@ async function reloadAllSplatLayers(){
         fileName: (L.name || 'scene') + '.' + ext,
         ...SPARK_QUALITY_OPTS,
       };
-      if(ext === 'splat')       opts.fileType = SplatFileType.SPLAT;
-      else if(ext === 'ksplat') opts.fileType = SplatFileType.KSPLAT;
-      else if(ext === 'ply')    opts.fileType = SplatFileType.PLY;
-      else if(ext === 'spz')    opts.fileType = SplatFileType.SPZ;
+      const _ft = _splatFileTypeFor(ext);
+      if(_ft !== undefined) opts.fileType = _ft;
       let newMesh;
       try {
         newMesh = new SplatMesh(opts);
@@ -7108,10 +7147,16 @@ async function loadSplatFile(file){
       delete opts.coneFov0;
       console.info('[Locahun-diag] lod=1 — Spark runtime LOD + foveation ENABLED for this load');
     }
-    if(ext==='splat') opts.fileType=SplatFileType.SPLAT;
-    else if(ext==='ksplat') opts.fileType=SplatFileType.KSPLAT;
-    else if(ext==='ply') opts.fileType=SplatFileType.PLY;
-    else if(ext==='spz') opts.fileType=SplatFileType.SPZ;
+    {
+      const _ft = _splatFileTypeFor(ext);
+      if(_ft !== undefined) opts.fileType = _ft;
+      else if(ext === 'rad'){
+        // .RAD is the streaming format from World Labs (Spark 2.x). If
+        // this Spark build hasn't shipped SplatFileType.RAD yet, fail
+        // loud rather than silently treating it as PLY.
+        throw new Error('.RAD は現バージョンの Spark ではまだ未対応です。SDK 更新をお待ちください。');
+      }
+    }
     // Remove previous main splat layer
     const _prevMain=layers.find(l=>l._isMain);
     if(_prevMain){ scene.remove(_prevMain.mesh); const _i=layers.indexOf(_prevMain); if(_i>=0)layers.splice(_i,1); }
@@ -11812,10 +11857,13 @@ async function loadAdditionalSplat(file){
     }
     // Spark 2.x: fileBytes path (see loadSplatFile comment above).
     const opts={fileBytes:_splatBytes, fileName:file.name, ...SPARK_QUALITY_OPTS};
-    if(ext==='splat') opts.fileType=SplatFileType.SPLAT;
-    else if(ext==='ksplat') opts.fileType=SplatFileType.KSPLAT;
-    else if(ext==='ply') opts.fileType=SplatFileType.PLY;
-    else if(ext==='spz') opts.fileType=SplatFileType.SPZ;
+    {
+      const _ft = _splatFileTypeFor(ext);
+      if(_ft !== undefined) opts.fileType = _ft;
+      else if(ext === 'rad'){
+        throw new Error('.RAD は現バージョンの Spark ではまだ未対応です。SDK 更新をお待ちください。');
+      }
+    }
     setMsg(T('building-3dgs')); setBar(60);
     const sm=new SplatMesh(opts);
     const flipped=(ext==='ply'||ext==='spz');
@@ -13056,6 +13104,48 @@ async function loadFromURL(url, displayName){
     // Show loader UI early so user sees feedback during the ~30s fetch
     if(typeof showLd === 'function') showLd(`読み込み中: ${displayName || url}`);
     if(typeof setBar === 'function') setBar(5);
+    // .RAD URLs get a streaming path: Spark fetches via HTTP Range
+    // Request internally, so we skip the whole-file ArrayBuffer fetch
+    // and hand the URL straight to SplatMesh. This is the entire point
+    // of the .RAD format — chunked streaming with O(log N) LoD walk.
+    const ext = (url.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
+    const ft = _splatFileTypeFor(ext);
+    if(ext === 'rad'){
+      if(ft === undefined){
+        if(typeof hideLd === 'function') hideLd();
+        if(typeof showUndoToast === 'function') showUndoToast('.RAD は現バージョンの Spark ではまだ未対応です。SDK 更新をお待ちください。');
+        return;
+      }
+      // Stream-load path. Construct a SplatMesh directly with `url:` —
+      // Spark will fetch chunks lazily. We skip loadSplatFile's
+      // fileBytes pipeline entirely.
+      if(typeof setBar === 'function') setBar(15);
+      const opts = { url, fileType: ft, ...SPARK_QUALITY_OPTS };
+      // LoD ON for RAD scenes (the format's headline feature).
+      opts.lod = true;
+      opts.enableLod = true;
+      // Mirror loadSplatFile's existing main-splat-layer swap so user
+      // doesn't end up with stacked meshes after multiple autoloads.
+      const _prevMain = layers.find(l => l._isMain);
+      if(_prevMain){ scene.remove(_prevMain.mesh); const _i = layers.indexOf(_prevMain); if(_i >= 0) layers.splice(_i, 1); }
+      if(splatMesh && !layers.find(l => l.mesh === splatMesh)) scene.remove(splatMesh);
+      splatMesh = new SplatMesh(opts);
+      if(typeof tuneSplatMesh === 'function') tuneSplatMesh(splatMesh);
+      const name = (displayName || url.split('/').pop().split('?')[0]) || 'autoload.rad';
+      const mainL = addLayer({ name: name.replace(/\.[^.]+$/, ''), type:'splat', mesh: splatMesh, rot:{x:0,y:0,z:0} });
+      mainL._isMain = true;
+      mainL._rawExt = 'rad';
+      mainL._streamUrl = url;
+      _splatActiveUntil = performance.now() + (typeof _SPLAT_ACTIVE_MS === 'number' ? _SPLAT_ACTIVE_MS : 4000);
+      if(typeof setBar === 'function') setBar(100);
+      if(typeof hideLd === 'function') hideLd();
+      if(typeof showHUD === 'function') showHUD();
+      if(typeof hideDZ === 'function') hideDZ();
+      if(typeof showUndoToast === 'function') showUndoToast('📡 .RAD ストリーミング読込開始: ' + name);
+      return;
+    }
+    // Non-RAD URL: standard path — fetch whole file as ArrayBuffer,
+    // wrap in a File, hand to loadSplatFile.
     const resp = await fetch(url);
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     if(typeof setBar === 'function') setBar(40);
@@ -14349,10 +14439,13 @@ async function restoreProject(project) {
           // Spark 2.x: explicit fileType required for blob: URLs (auto-detect
           // by extension can't see anything inside the blob URL).
           opts.fileName = entry.file || (entry.name + '.' + ext);
-          if(ext==='splat') opts.fileType=SplatFileType.SPLAT;
-          else if(ext==='ksplat') opts.fileType=SplatFileType.KSPLAT;
-          else if(ext==='ply') opts.fileType=SplatFileType.PLY;
-          else if(ext==='spz') opts.fileType=SplatFileType.SPZ;
+          {
+            const _ft = _splatFileTypeFor(ext);
+            if(_ft !== undefined) opts.fileType = _ft;
+            else if(ext === 'rad'){
+              throw new Error('.RAD は現バージョンの Spark ではまだ未対応です');
+            }
+          }
           mesh=new SplatMesh(opts);
           // Mark _loadFlipped on the entry so the layer constructor below
           // picks it up; orientation will be composed via applyLayerFlipQuat.
