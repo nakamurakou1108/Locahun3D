@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================
-#  PLY -> RAD 一括変換 (macOS / Linux)
+#  PLY -> RAD 変換 (macOS / Linux)
 # ============================================================
 #  使い方:
-#    ./convert.sh                  ... input/ 内の全ファイルを変換
-#    ./convert.sh path/to/file.ply ... 指定したファイルだけ変換
+#    ./convert.sh path/to/file1.ply [path/to/file2.ply ...]
+#
+#  出力 .rad は入力と同じフォルダに <basename>.rad で保存されます。
+#
+#  macOS で Finder からダブルクリック実行したい場合は、
+#  ファイルを「ターミナル.app」にドラッグするか、
+#  右クリック → サービス → 「ターミナルで開く」経由で実行してください。
 # ============================================================
 
 set -e
@@ -12,85 +17,102 @@ cd "$(dirname "$0")"
 
 # ── Spark セットアップ確認 ──
 if [ ! -d "spark/node_modules" ]; then
-  echo "[NG] Spark のセットアップが完了していないようです。"
+  echo
+  echo "[NG] Spark のセットアップが完了していません。"
   echo "     まず ./setup.sh を実行してください。"
+  echo
   exit 1
 fi
 
-mkdir -p input output
+# ── 引数チェック ──
+if [ $# -eq 0 ]; then
+  cat <<EOF
+
+============================================================
+  PLY -> RAD 変換
+============================================================
+
+  使い方:
+    ./convert.sh path/to/file1.ply [path/to/file2.ply ...]
+
+  出力 .rad は入力と同じフォルダに保存されます。
+
+EOF
+  exit 0
+fi
 
 # ── 1 ファイル変換関数 ──
 convert_one() {
   local src="$1"
-  local base
-  base="$(basename "$src")"
-  local name="${base%.*}"
 
-  echo
-  echo "------------------------------------------------------------"
-  echo "  変換中: $src"
-  echo "------------------------------------------------------------"
+  if [ ! -f "$src" ]; then
+    echo "[NG] ファイルが見つかりません: $src"
+    return
+  fi
 
-  # build-lod に絶対パスで渡す。spark/ ディレクトリ内で実行するので
-  # 相対パスを ../ で再構成する。
+  # 絶対パス化
   local src_abs
   if [[ "$src" = /* ]]; then
     src_abs="$src"
   else
-    src_abs="$(pwd)/$src"
+    src_abs="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
   fi
+
+  local src_dir
+  src_dir="$(dirname "$src_abs")"
+  local base
+  base="$(basename "$src_abs")"
+  local name="${base%.*}"
+
+  echo
+  echo "------------------------------------------------------------"
+  echo "  入力: $src_abs"
+  echo "------------------------------------------------------------"
 
   (
     cd spark
     npm run build-lod -- "$src_abs" --quality
   )
 
-  # 出力先候補を探す: build-lod は通常入力と同じディレクトリに
-  # <basename>-lod.rad / <basename>.rad / <basename>_lod.rad で出す
-  local out
+  # 出力ファイル候補を順に探す
+  local out=""
   for candidate in \
-    "$(dirname "$src_abs")/${name}-lod.rad" \
-    "$(dirname "$src_abs")/${name}_lod.rad" \
-    "$(dirname "$src_abs")/${name}.rad"; do
+    "${src_dir}/${name}-lod.rad" \
+    "${src_dir}/${name}_lod.rad" \
+    "${src_dir}/${name}.lod.rad" \
+    "${src_dir}/${name}.rad"; do
     if [ -f "$candidate" ]; then
       out="$candidate"
       break
     fi
   done
 
-  if [ -z "${out:-}" ]; then
-    echo "[WARN] 変換は走りましたが、出力 .rad の場所を特定できませんでした。"
-    echo "       入力と同じフォルダで *.rad を探してください。"
+  if [ -z "$out" ]; then
+    echo "[WARN] 変換は実行されましたが、出力 .rad の場所を特定できませんでした。"
+    echo "       以下のフォルダで *.rad を手動で探してください:"
+    echo "       $src_dir"
     return
   fi
 
-  mv "$out" "output/${name}.rad"
-  echo "[OK] 出力: output/${name}.rad"
+  # 念のため <basename>.rad にリネーム(統一名)
+  local final="${src_dir}/${name}.rad"
+  if [ "$out" != "$final" ]; then
+    mv -f "$out" "$final"
+  fi
+  echo "[OK] 出力: $final"
 }
 
-# ── 引数があれば単一ファイル変換 ──
-if [ $# -gt 0 ]; then
-  convert_one "$1"
-  echo
-  echo "完了しました。"
-  exit 0
-fi
+echo
+echo "============================================================"
+echo "  PLY -> RAD 変換開始"
+echo "============================================================"
 
-# ── input/ 内の対応形式を全て処理 ──
-found=0
-shopt -s nullglob
-for ext in ply spz sog; do
-  for f in input/*.$ext; do
-    convert_one "$f"
-    found=1
-  done
+for arg in "$@"; do
+  convert_one "$arg"
 done
 
-if [ "$found" -eq 0 ]; then
-  echo
-  echo "[INFO] input/ フォルダに .ply / .spz / .sog ファイルがありません。"
-  echo "       変換したいファイルを input/ に入れてから再実行してください。"
-fi
-
 echo
-echo "完了しました。"
+echo "============================================================"
+echo "  全ファイルの変換が完了しました。"
+echo "============================================================"
+echo

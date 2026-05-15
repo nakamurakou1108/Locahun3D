@@ -1,54 +1,65 @@
 @echo off
 REM ============================================================
-REM  PLY -> RAD 一括変換 (Windows)
+REM  PLY -> RAD ドラッグ&ドロップ変換 (Windows)
 REM ============================================================
 REM  使い方:
-REM    convert.bat                  ... input/ 内の全ファイルを変換
-REM    convert.bat path\to\file.ply ... 指定したファイルだけ変換
+REM    1. このバッチファイルを Desktop など好きな場所に置く
+REM    2. 変換したい .ply / .spz / .sog ファイルを
+REM       このバッチファイルにドラッグ&ドロップ
+REM    3. 入力と同じフォルダに <basename>.rad が生成される
+REM
+REM  複数ファイルを同時ドロップしても順次処理されます。
+REM  コマンドラインからの呼び出しも可:
+REM    convert.bat "C:\path\to\file.ply"
 REM ============================================================
 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-REM ── spark フォルダ存在チェック ──
+REM ── Spark のセットアップ確認 ──
 if not exist "spark\node_modules" (
-  echo [NG] Spark のセットアップが完了していないようです。
-  echo      まず setup.bat を実行してください。
+  echo.
+  echo [NG] Spark のセットアップが完了していません。
+  echo      まず setup.bat をダブルクリックして初回セットアップを行ってください。
+  echo.
   pause
   exit /b 1
 )
 
-REM ── input / output フォルダ確保 ──
-if not exist "input"  mkdir input
-if not exist "output" mkdir output
-
-REM ── 引数があれば単一ファイル変換 ──
-if not "%~1"=="" (
-  call :convert_one "%~1"
-  goto :end
-)
-
-REM ── input/ 内の対応形式を全て処理 ──
-set FOUND=0
-for %%E in (ply spz sog) do (
-  for %%F in ("input\*.%%E") do (
-    if exist "%%F" (
-      set FOUND=1
-      call :convert_one "%%F"
-    )
-  )
-)
-
-if !FOUND! equ 0 (
+REM ── 引数が無ければドロップを促すメッセージ ──
+if "%~1"=="" (
   echo.
-  echo [INFO] input\ フォルダに .ply / .spz / .sog ファイルがありません。
-  echo        変換したいファイルを input\ に入れてから再実行してください。
+  echo ============================================================
+  echo   PLY -^> RAD ドラッグ^&ドロップ変換
+  echo ============================================================
   echo.
+  echo   このバッチファイルに、変換したい .ply / .spz / .sog
+  echo   ファイルをドラッグ^&ドロップしてください。
+  echo.
+  echo   出力 .rad は入力と同じフォルダに保存されます。
+  echo.
+  pause
+  exit /b 0
 )
 
-:end
+REM ── ドロップされた全ファイルを順次処理 ──
 echo.
-echo 完了しました。
+echo ============================================================
+echo   PLY -^> RAD 変換開始
+echo ============================================================
+
+:loop
+if "%~1"=="" goto :done
+call :convert_one "%~1"
+shift
+goto :loop
+
+:done
+echo.
+echo ============================================================
+echo   全ファイルの変換が完了しました。
+echo ============================================================
+echo.
 pause
 exit /b 0
 
@@ -57,18 +68,25 @@ REM  Sub-routine: 1 ファイル変換
 REM ============================================================
 :convert_one
 set "SRC=%~1"
+set "SRC_ABS=%~f1"
+set "SRC_DIR=%~dp1"
 set "SRC_NAME=%~n1"
 set "SRC_EXT=%~x1"
-set "SRC_ABS=%~f1"
 
 echo.
 echo ------------------------------------------------------------
-echo   変換中: !SRC!
+echo   入力: !SRC!
 echo ------------------------------------------------------------
 
+if not exist "!SRC_ABS!" (
+  echo [NG] ファイルが見つかりません: !SRC!
+  goto :eof
+)
+
 REM Spark の build-lod を実行
+REM 出力先は入力と同じフォルダになる(build-lod の動作)
 pushd spark
-call npm run build-lod -- "..\!SRC!" --quality
+call npm run build-lod -- "!SRC_ABS!" --quality
 set CONV_EXIT=!errorlevel!
 popd
 
@@ -77,26 +95,30 @@ if !CONV_EXIT! neq 0 (
   goto :eof
 )
 
-REM build-lod の出力は元と同じディレクトリに <basename>-lod.rad で生成される
-REM ファイル名検索: <basename>*.rad
-set "OUT_PATTERN=input\!SRC_NAME!*.rad"
-for %%G in ("!OUT_PATTERN!") do (
-  if exist "%%G" (
-    move "%%G" "output\!SRC_NAME!.rad" >nul
-    echo [OK] 出力: output\!SRC_NAME!.rad
-    goto :eof
-  )
+REM build-lod の出力ファイル名は実装により異なる可能性があるので
+REM 複数のパターンを順に探す
+set "OUT_PATH="
+for %%P in (
+  "!SRC_DIR!!SRC_NAME!-lod.rad"
+  "!SRC_DIR!!SRC_NAME!_lod.rad"
+  "!SRC_DIR!!SRC_NAME!.rad"
+  "!SRC_DIR!!SRC_NAME!.lod.rad"
+) do (
+  if exist "%%~P" if not defined OUT_PATH set "OUT_PATH=%%~P"
 )
 
-REM もし input/ に出力されなかった場合(別パスを試す)
-for %%G in ("!SRC_NAME!*.rad") do (
-  if exist "%%G" (
-    move "%%G" "output\!SRC_NAME!.rad" >nul
-    echo [OK] 出力: output\!SRC_NAME!.rad
-    goto :eof
-  )
+if not defined OUT_PATH (
+  echo [WARN] 変換は実行されましたが、出力 .rad の場所を特定できませんでした。
+  echo        以下のフォルダで *.rad を手動で探してください:
+  echo        !SRC_DIR!
+  goto :eof
 )
 
-echo [WARN] 変換は走りましたが、出力 .rad の場所を特定できませんでした。
-echo        手動で *.rad を探して output\ に移動してください。
+REM 念のため <basename>.rad にリネーム(統一名)
+set "FINAL_PATH=!SRC_DIR!!SRC_NAME!.rad"
+if /i not "!OUT_PATH!"=="!FINAL_PATH!" (
+  move /Y "!OUT_PATH!" "!FINAL_PATH!" >nul
+)
+
+echo [OK] 出力: !FINAL_PATH!
 goto :eof

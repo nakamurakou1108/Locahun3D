@@ -75,8 +75,7 @@ echo
 
 (cd spark && npm install)
 
-# ── 6. input / output フォルダ ──
-mkdir -p input output
+chmod +x convert.sh 2>/dev/null || true
 
 echo
 echo "============================================================"
@@ -84,7 +83,7 @@ echo "  セットアップ完了!"
 echo "============================================================"
 echo
 echo "  次のステップ:"
-echo "  1. PLY ファイルを input/ フォルダに入れる"
-echo "  2. ./convert.sh を実行"
-echo "  3. output/ に .rad ファイルが生成されます"
+echo "  1. 変換したい .ply / .spz / .sog ファイルのパスを指定:"
+echo "       ./convert.sh path/to/file.ply"
+echo "  2. 同じフォルダに <basename>.rad が生成されます"
 echo

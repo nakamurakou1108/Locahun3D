@@ -105,19 +105,15 @@ if !NPM_INSTALL_EXIT! neq 0 (
   goto :error
 )
 
-REM ── 6. input / output フォルダ作成 ──
-if not exist "input" mkdir input
-if not exist "output" mkdir output
-
 echo.
 echo ============================================================
 echo   セットアップ完了 ^!
 echo ============================================================
 echo.
 echo   次のステップ:
-echo   1. PLY ファイルを input\ フォルダに入れる
-echo   2. convert.bat をダブルクリック
-echo   3. output\ に .rad ファイルが生成されます
+echo   1. 変換したい .ply / .spz / .sog ファイルを
+echo      convert.bat にドラッグ^&ドロップ
+echo   2. 入力と同じフォルダに ^<basename^>.rad が生成されます
 echo.
 pause
 exit /b 0
