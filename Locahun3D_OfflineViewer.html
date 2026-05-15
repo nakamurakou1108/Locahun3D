@@ -6525,6 +6525,22 @@ function _splatStride(){
   } catch(_){}
   return 1;
 }
+
+// .rad equivalent of the PLY/SPLAT subsample stride. RAD bytes can't be
+// resampled (chunks are WASM-encoded and inter-dependent for LoD walking),
+// so instead we tell Spark's LoD walker to stop one octree level earlier.
+// `lodScale` multiplies the screen-space "split me" threshold:
+//   lodScale = 1  →  full detail (default)
+//   lodScale = 2  →  each splat needs to be 2× bigger on screen before
+//                    splitting → in 2D that means ~4× fewer splats live
+//                    in the same view = the "1/4" target the toggle
+//                    advertises for PLY/SPLAT.
+// Stride 2 → lodScale sqrt(2) ≈ 1.41 (half splats);
+// Stride 4 → lodScale 2.0 (quarter splats).
+function _radLodScaleForStride(stride){
+  if(!Number.isFinite(stride) || stride <= 1) return 1;
+  return Math.sqrt(stride);
+}
 function subsamplePLY(rawBuf, stride){
   if(stride <= 1) return rawBuf;
   try {
@@ -6663,6 +6679,7 @@ async function reloadAllSplatLayers(){
         });
         opts.lod = true;
         opts.enableLod = true;
+        opts.lodScale = _radLodScaleForStride(_splatStride());
         delete opts.fileBytes;
         delete opts.fileType;
         delete opts.coneFoveate;
@@ -7212,6 +7229,8 @@ async function loadSplatFile(file){
       });
       opts.lod = true;
       opts.enableLod = true;
+      // Honour the "ポリゴン 1/4" toggle for RAD too — see _radLodScaleForStride.
+      opts.lodScale = _radLodScaleForStride(_splatStride());
       // PagedSplats now owns the bytes; remove SplatMesh-level fileBytes
       // so Spark doesn't try to double-parse.
       delete opts.fileBytes;
@@ -11950,6 +11969,7 @@ async function loadAdditionalSplat(file){
       });
       opts.lod = true;
       opts.enableLod = true;
+      opts.lodScale = _radLodScaleForStride(_splatStride());
       delete opts.fileBytes;
       delete opts.fileType;
       // Strip foveation overrides — see loadSplatFile() for the rationale.
@@ -13251,6 +13271,8 @@ async function loadFromURL(url, displayName){
       // article (matsutomato / 2026-05) showed initial-frame time
       // dropping from ~60 s to ~5 s on a 5 M-splat scene with paged.
       opts.paged = true;
+      // Honour the "ポリゴン 1/4" toggle for URL-autoloaded RAD too.
+      opts.lodScale = _radLodScaleForStride(_splatStride());
       // Mirror loadSplatFile's existing main-splat-layer swap so user
       // doesn't end up with stacked meshes after multiple autoloads.
       const _prevMain = layers.find(l => l._isMain);
@@ -14584,6 +14606,7 @@ async function restoreProject(project) {
             });
             opts.lod = true;
             opts.enableLod = true;
+            opts.lodScale = _radLodScaleForStride(_splatStride());
             delete opts.url;
             delete opts.fileType;
             delete opts.coneFoveate;
