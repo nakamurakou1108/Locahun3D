@@ -76,6 +76,10 @@ Desktop/
 >   入っていて `link.exe` が無い PC は、自動で GNU へ切替えます。
 > - Spark の `npm install` は `--ignore-scripts` で実行します。ブラウザ用
 >   WASM ビルド (wasm-pack) は PLY→RAD 変換に不要なためスキップします。
+> - `convert.bat` は build-lod を `cargo --no-default-features` でビルド
+>   します。GPU 機能 (wgpu) を外すことで GNU ツールチェーンが要求する
+>   `dlltool.exe` (MinGW binutils) 不要になります。SH クラスタリングは
+>   CPU フォールバックがあるため出力品質は同等です。
 >
 > winget は Windows 10 1809+ / Windows 11 に標準搭載。導入後は一度
 > ターミナルを閉じて `setup.bat` を再実行すると確実です。

@@ -105,10 +105,15 @@ if /i "!SRC_EXT!"==".ply" (
   set "BUILD_SRC=!TMP_ROT!"
 )
 
-REM Spark の build-lod を実行
-REM 出力先は入力と同じフォルダになる(build-lod の動作)
+REM Spark の build-lod を実行 (cargo を直接呼ぶ)。
+REM --no-default-features で GPU 機能 (wgpu) を外す。GNU ツールチェーン
+REM では wgpu が引き込む windows-* crate のビルドに dlltool.exe が要り、
+REM 多くの PC でこれが無く失敗するため。build-lod は GPU 無しでも
+REM CPU フォールバックで同等の .rad を生成できる (SH クラスタリングも
+REM CPU 実装あり / maxSh=0 の PLY では SH 自体が無い)。
+REM npm run build-lod だと cargo フラグを渡せないので直接 cargo 実行。
 pushd spark
-call npm run build-lod -- "!BUILD_SRC!" --quality
+call cargo run --manifest-path rust/build-lod/Cargo.toml --release --no-default-features -- "!BUILD_SRC!" --quality
 set CONV_EXIT=!errorlevel!
 popd
 
