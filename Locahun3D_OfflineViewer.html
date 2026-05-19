@@ -715,6 +715,16 @@ body{position:fixed;top:0;left:0;}
   background:rgba(255,255,255,.08);
   border-color:rgba(255,255,255,.25);
 }
+/* "open" state: badge stays lit while its dropdown (#quality-panel) is
+   shown, and its bottom edge squares off so it visually fuses with the
+   panel hanging directly beneath it (the panel drops its top-right
+   radius to match). Makes the pair read as one dropdown control. */
+#qi-badge.qib-open{
+  background:rgba(255,255,255,.10);
+  border-color:rgba(255,255,255,.28);
+  border-bottom-right-radius:0;
+  border-bottom-left-radius:0;
+}
 #qi-badge .qib-icon{opacity:.65;}
 #qi-badge .qib-lvl{color:#ffe4b3;font-weight:600;}
 #qi-badge .qib-fps{color:rgba(180,180,180,.65);
@@ -4514,6 +4524,7 @@ function closeAllPanels(){
   // Quality panel + FPS readout
   _qualPanelOpen=false;
   document.getElementById('quality-panel').style.display='none';
+  { const _qb = document.getElementById('qi-badge'); if(_qb) _qb.classList.remove('qib-open'); }
   if(_perfInterval){ clearInterval(_perfInterval); _perfInterval=null; }
   // Legacy settings panel
   qOpen=false;
@@ -12327,11 +12338,31 @@ window.toggleQualityPanel=function(){
   closeAllPanels();
   if(!wasOpen){
     _qualPanelOpen=true;
-    document.getElementById('quality-panel').style.display='block';
+    const panel = document.getElementById('quality-panel');
+    const badge = document.getElementById('qi-badge');
+    // Anchor the panel as a true dropdown hanging off the FPS/画質 badge:
+    // measure the badge's live rect and pin the panel flush to its
+    // bottom-right corner (2 px gap). Doing this at open-time (rather
+    // than a static CSS top:) keeps it correct whether or not the
+    // topbar is present, on any device DPI / font scale, and if the
+    // badge ever moves. Also give the badge an "open" highlight + drop
+    // the panel's top-right radius so the two read as one connected
+    // control instead of two floating cards.
+    if(badge){
+      const br = badge.getBoundingClientRect();
+      panel.style.top    = Math.round(br.bottom + 2) + 'px';
+      panel.style.right  = Math.round(window.innerWidth - br.right) + 'px';
+      panel.style.bottom = 'auto';
+      panel.style.borderTopRightRadius = '4px';
+      badge.classList.add('qib-open');
+    }
+    panel.style.display='block';
     updatePerfStats(); // show immediately
     _perfInterval = setInterval(updatePerfStats, 500); // refresh every 500ms
   } else {
     clearInterval(_perfInterval); _perfInterval=null;
+    const badge = document.getElementById('qi-badge');
+    if(badge) badge.classList.remove('qib-open');
   }
 };
 
