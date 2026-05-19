@@ -675,18 +675,20 @@ body{position:fixed;top:0;left:0;}
 
 /* ══════ QUALITY PANEL ══════ */
 #quality-panel{
-  position:fixed;bottom:60px;right:14px;
+  /* Anchored directly UNDER the #qi-badge (the FPS/画質 chip at
+     top:54px, ~28 px tall) so it reads as a proper dropdown from that
+     button rather than a disconnected panel floating up from the
+     bottom of the screen. top:88px ≈ badge top + badge height + a few
+     px gap; right edge shared with the badge so they line up. */
+  position:fixed;top:88px;right:14px;
   background:rgba(26,26,28,.97);border:1px solid rgba(255,255,255,.1);border-radius:10px;
   padding:12px 16px;z-index:60;min-width:200px;display:none;
-  /* Phone landscape has <400 px of usable height between topbar and cbar.
-     The full quality / FPS panel is ~480 px tall (presets + 設定 rows +
-     処理能力モニター + 解像度), so it overflows the viewport top and the
-     user can't scroll a position:fixed element by default. Capping the
-     height + enabling internal scrolling fixes the "見切れて scroll
-     できない" complaint without resizing the panel on desktop where the
-     calc() room is plenty. dvh accounts for the mobile URL bar showing /
-     hiding so the cap stays correct as Chrome's chrome shrinks. */
-  max-height:calc(100dvh - 110px);
+  /* The full menu (画質プリセット + 設定 rows + 移動速度 + 処理能力
+     モニター + 解像度) is ~480 px tall — taller than phone-landscape's
+     usable height. Cap it just under the viewport and scroll internally
+     so EVERY item is reachable from the badge dropdown. dvh tracks the
+     mobile URL bar so the cap stays correct as Chrome's chrome shrinks. */
+  max-height:calc(100dvh - 100px);
   overflow-y:auto;
   overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;
@@ -1193,7 +1195,7 @@ body{position:fixed;top:0;left:0;}
       <span id="spdVal" style="color:#C0C0C0;margin-left:6px">5</span></label>
   </div>
   <div style="padding:0 2px;margin-bottom:6px">
-    <input type="range" id="spdSlider" min="0.5" max="80" step="0.5" value="5"
+    <input type="range" id="spdSlider" min="0.5" max="20" step="0.5" value="5"
            oninput="onSpeedSlider(this.value)" style="width:100%">
   </div>
 
@@ -3108,6 +3110,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Also reflect the auto-selected preset in the in-panel button row.
   document.querySelectorAll('#quality-panel #qbtns button')
     .forEach((b,i)=>b.classList.toggle('on', i===qualIdx));
+  // Sync the move-speed slider + readout to the actual camSpeed default.
+  // The markup hardcodes value="5"; on touch devices camSpeed seeds to 3,
+  // so without this the slider would lie about the real speed until the
+  // user first dragged it.
+  {
+    const _ss = document.getElementById('spdSlider');
+    if(_ss) _ss.value = camSpeed;
+    const _sv = document.getElementById('spdVal');
+    if(_sv) _sv.textContent = camSpeed;
+    const _sl = document.getElementById('spdLabel');
+    if(_sl) _sl.textContent = camSpeed;
+  }
   // ── iOS / iPadOS file-picker fix ──
   // iOS Files app maps `accept=".splat"`-style extension hints to UTI
   // (Uniform Type Identifier) entries. The OS has no UTI for our domain
@@ -3232,7 +3246,13 @@ const _SPLAT_TIERS = {
 const _SPLAT_PARAMS = _SPLAT_TIERS[_splatPerfTier] || _SPLAT_TIERS.laptop_ok;
 console.info('[Locahun][PerfTier]', _splatPerfTier, _SPLAT_PARAMS);
 let fov = 90;
-let camSpeed = 5;
+// Touch devices (iPad / iPhone) felt too fast at the desktop default of 5
+// — the virtual joystick + touch-look make a given camSpeed cover more
+// ground per gesture than keyboard WASD, and at full joystick deflection
+// the sprint multiplier (×5) compounds it. Seed a gentler 3 on touch so
+// the scene is comfortable to explore out of the box; the slider (0.5–20)
+// still lets users dial it up.
+let camSpeed = isMobile ? 3 : 5;
 
 const clock = new THREE.Clock();
 
@@ -16193,7 +16213,7 @@ document.addEventListener('pointerlockchange', ()=>{
 canvas.addEventListener('wheel',e=>{
   e.preventDefault();
   if(e.shiftKey){
-    camSpeed=Math.max(0.5,Math.min(80,camSpeed-e.deltaY*0.02));
+    camSpeed=Math.max(0.5,Math.min(20,camSpeed-e.deltaY*0.02));
     camSpeed=Math.round(camSpeed*10)/10;
     const _spd = document.getElementById('spdLabel');     if(_spd)  _spd.textContent  = camSpeed;
     const _spv = document.getElementById('spdVal');       if(_spv)  _spv.textContent  = camSpeed;
@@ -16805,7 +16825,7 @@ document.addEventListener('keyup',e=>{ if(typeof lpv!=='undefined') lpv._ctrlHel
         markDirty(6);
         break;
       case 'speed':
-        camSpeed = Math.max(0.1, Math.min(80, v));
+        camSpeed = Math.max(0.1, Math.min(20, v));
         const sl = document.getElementById('spdSlider'); if(sl) sl.value = camSpeed;
         const sv = document.getElementById('spdVal'); if(sv) sv.textContent = camSpeed;
         break;
