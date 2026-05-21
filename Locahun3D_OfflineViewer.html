@@ -2607,7 +2607,8 @@ body.ar-active #dz{display:none !important;}
     </button>
   </div>
   <div class="dz-url-hint" id="dz-url-hint-text">
-    Dropbox / 直接DL 可能なURL の .rad / .ply / .splat 等。Dropbox は dl=1 へ自動変換。
+    直接DL 可能なURL の .rad / .ply / .splat 等を直接読込。Dropbox は CORS 制限で
+    別タブ DL 経由になります（保存後ファイルをドロップ）。
   </div>
   <label class="dz-portalcam" id="dz-portalcam-label" title="Portalcam で取得した 3DGS は 90° X 軸回転で書き出されるため、自動で補正します">
     <input type="checkbox" id="dz-portalcam-cb" onchange="syncPortalcamCheckboxToLayers()">
@@ -15373,7 +15374,7 @@ Object.assign(I18N.ja,{
   'dz-zip-text':'プロジェクトを開く (.zip)',
   'dz-continue-text':'編集を続ける',
   'dz-url-btn-text':'📥 URLから開く',
-  'dz-url-hint-text':'Dropbox / 直接DL 可能なURL の .rad / .ply / .splat 等。Dropbox は dl=1 へ自動変換。',
+  'dz-url-hint-text':'直接DL 可能なURL の .rad / .ply / .splat 等を直接読込。Dropbox は CORS 制限で別タブ DL 経由になります（保存後ファイルをドロップ）。',
   'mf-title':'ミニマップ',
   'mf-hint':'右クリ長押しで移動先選択',
   'mm-big-title':'ミニマップ',
@@ -15620,7 +15621,7 @@ Object.assign(I18N.en,{
   'dz-zip-text':'Open Project (.zip)',
   'dz-continue-text':'Continue Editing',
   'dz-url-btn-text':'📥 Open from URL',
-  'dz-url-hint-text':'Dropbox / any directly-downloadable URL of .rad / .ply / .splat etc. Dropbox links are auto-rewritten to dl=1.',
+  'dz-url-hint-text':'Any directly-downloadable URL (.rad/.ply/.splat/…) loads inline. Dropbox links open in a new tab to download (CORS) — then drag the saved file in.',
   'mf-title':'Minimap',
   'mf-hint':'Right-click hold to teleport',
   'mm-big-title':'Minimap',
@@ -16827,6 +16828,22 @@ window.openFromUrl = async function(){
       : `⚠ 非対応の拡張子: .${ext}`);
     return;
   }
+  // Dropbox short-circuit: www.dropbox.com 302 redirects don't carry
+  // Access-Control-Allow-Origin, so a cross-origin fetch() never reaches
+  // the dl.dropboxusercontent.com final URL that DOES have CORS. Trying
+  // the fetch just produces a "Failed to fetch" after a noticeable
+  // delay. Skip it and go straight to a new-tab download so the user
+  // saves the file locally and drags it onto the viewer.
+  let isDropbox = false;
+  try { isDropbox = /(^|\.)dropbox\.com$/i.test(new URL(url).hostname); } catch(_){}
+  if(isDropbox){
+    const _en = window._lang === 'en';
+    showUndoToast(_en
+      ? '📥 Dropbox can\'t be loaded directly (CORS). Downloading in a new tab — drag the saved file onto the viewer to open.'
+      : '📥 Dropbox は CORS 制限で直接読込不可。新しいタブで DL 開始 → 保存後、ファイルをビューアーにドロップしてください。');
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch(_){}
+    return;
+  }
   // Disable the button while fetching so a double-click can't queue two
   // downloads of the same scene.
   const btn = document.getElementById('dz-url-btn');
@@ -16848,14 +16865,32 @@ window.openFromUrl = async function(){
   } catch(e){
     console.error('[openFromUrl]', e);
     const msg = (e && e.message) || String(e);
-    // Most common failure mode is a CORS block when the host doesn't send
-    // Access-Control-Allow-Origin. Surface that hint specifically.
-    const corsHint = /Failed to fetch|NetworkError/i.test(msg)
-      ? (window._lang==='en' ? ' (CORS / network)' : ' (CORS / ネットワーク)')
-      : '';
-    showUndoToast((window._lang==='en'
-      ? `⚠ URL load failed: ${msg}`
-      : `⚠ URL読み込み失敗: ${msg}`) + corsHint);
+    const isCors = /Failed to fetch|NetworkError/i.test(msg);
+    const _en = window._lang === 'en';
+    // Dropbox-specific actionable fallback: the www.dropbox.com 302
+    // redirect lacks an Access-Control-Allow-Origin header, so the
+    // browser blocks the fetch before reaching the file. Cross-origin
+    // <a download> isn't honoured by Safari but a plain new-tab
+    // navigation IS — the browser then downloads / previews the file
+    // through its own (non-fetch) pipeline that doesn't care about
+    // CORS. We auto-open the rewritten ?dl=1 URL so the user just has
+    // to wait for the download and drag the file in.
+    let isDropbox = false;
+    try { isDropbox = /(^|\.)dropbox\.com$/i.test(new URL(url).hostname); } catch(_){}
+    if(isCors && isDropbox){
+      showUndoToast(_en
+        ? `⚠ Dropbox can't be fetched directly (CORS). Opening download in a new tab — drag the saved file onto the viewer.`
+        : `⚠ Dropbox は CORS 制限で直接読込不可。新しいタブで DL 開始 → 保存後、ファイルをビューアーにドロップしてください。`);
+      try { window.open(url, '_blank', 'noopener,noreferrer'); } catch(_){}
+    } else {
+      const corsHint = isCors
+        ? (_en ? ' (CORS / network — try downloading and dragging the file in)'
+               : ' (CORS / ネットワーク — DL してドラッグ&ドロップを試してください)')
+        : '';
+      showUndoToast((_en
+        ? `⚠ URL load failed: ${msg}`
+        : `⚠ URL読み込み失敗: ${msg}`) + corsHint);
+    }
   } finally {
     if(btn) btn.disabled = false;
     if(btnTxt) btnTxt.textContent = origTxt;
