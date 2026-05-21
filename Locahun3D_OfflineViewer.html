@@ -286,6 +286,43 @@ body{position:fixed;top:0;left:0;}
 #dz .demo-btn:hover{
   background:rgba(255,180,84,.08);border-color:#ffb454;color:#fff;
 }
+/* ── URL ロード行: Dropbox などの共有リンクから直接読み込む ── */
+#dz .dz-url-row{
+  display:flex;gap:6px;align-items:stretch;
+  width:min(640px,88vw);margin-top:8px;
+  position:relative;z-index:2;
+}
+#dz .dz-url-row input[type=url]{
+  flex:1;min-width:0;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.18);
+  color:rgba(255,255,255,.9);
+  font-size:.82em;padding:8px 12px;border-radius:0;
+  font-family:'Noto Sans JP',sans-serif;letter-spacing:.02em;
+  outline:none;transition:border-color .15s,background .15s;
+}
+#dz .dz-url-row input[type=url]:focus{
+  border-color:#ffb454;background:rgba(255,180,84,.04);
+}
+#dz .dz-url-row input[type=url]::placeholder{
+  color:rgba(255,255,255,.30);
+}
+#dz .dz-url-row button{
+  background:rgba(255,180,84,.08);
+  border:1px solid rgba(255,180,84,.3);
+  color:rgba(255,180,84,.85);
+  font-family:'Noto Sans JP',sans-serif;letter-spacing:.04em;
+  font-size:.82em;padding:0 14px;cursor:pointer;transition:all .15s;
+}
+#dz .dz-url-row button:hover{
+  background:rgba(255,180,84,.18);color:#fff;border-color:#ffb454;
+}
+#dz .dz-url-hint{
+  font-size:.66em;color:rgba(180,180,190,.45);
+  width:min(640px,88vw);margin-top:3px;line-height:1.35;
+  text-align:left;position:relative;z-index:2;
+  font-family:'Noto Sans JP',sans-serif;letter-spacing:.02em;
+}
 
 /* ── Changelog (bottom of home screen, collapsible) ── */
 #dz>.dz-changelog{position:relative;z-index:2;}
@@ -2559,6 +2596,18 @@ body.ar-active #dz{display:none !important;}
          iOS Safari versions. -->
     <input type="file" id="fi" accept=".splat,.ply,.spz,.ksplat,.rad,.sog,.pcsogs,.pcsogszip,.obj,.gltf,.glb,.fbx,.zip" multiple
            style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
+  </div>
+  <!-- URL 入力: Dropbox 等の共有リンクを貼ると直接 fetch して読み込む -->
+  <div class="dz-url-row">
+    <input type="url" id="dz-url-input"
+           placeholder="https://www.dropbox.com/scl/fi/.../scene.rad?rlkey=..."
+           autocomplete="off" spellcheck="false">
+    <button id="dz-url-btn" onclick="window.openFromUrl()">
+      <span id="dz-url-btn-text">📥 URLから開く</span>
+    </button>
+  </div>
+  <div class="dz-url-hint" id="dz-url-hint-text">
+    Dropbox / 直接DL 可能なURL の .rad / .ply / .splat 等。Dropbox は dl=1 へ自動変換。
   </div>
   <label class="dz-portalcam" id="dz-portalcam-label" title="Portalcam で取得した 3DGS は 90° X 軸回転で書き出されるため、自動で補正します">
     <input type="checkbox" id="dz-portalcam-cb" onchange="syncPortalcamCheckboxToLayers()">
@@ -10019,6 +10068,7 @@ function applyI18n(){
   _s('dz-h1','dz-h1'); _s('dz-sub','dz-sub');
   _s('dz-drop-text','dz-drop-text'); _s('dz-empty-text','dz-empty-text');
   _s('dz-zip-text','dz-zip-text'); _s('dz-continue-text','dz-continue-text');
+  _s('dz-url-btn-text','dz-url-btn-text'); _s('dz-url-hint-text','dz-url-hint-text');
   _s('mf-title','mf-title');
   const mfHint=document.getElementById('mf-hint'); if(mfHint) mfHint.textContent=T('mf-hint');
   // Layer panel header text is owned by the inner #lp-h-scene span (handled
@@ -15322,6 +15372,8 @@ Object.assign(I18N.ja,{
   'dz-empty-text':'空プロジェクトを開く',
   'dz-zip-text':'プロジェクトを開く (.zip)',
   'dz-continue-text':'編集を続ける',
+  'dz-url-btn-text':'📥 URLから開く',
+  'dz-url-hint-text':'Dropbox / 直接DL 可能なURL の .rad / .ply / .splat 等。Dropbox は dl=1 へ自動変換。',
   'mf-title':'ミニマップ',
   'mf-hint':'右クリ長押しで移動先選択',
   'mm-big-title':'ミニマップ',
@@ -15567,6 +15619,8 @@ Object.assign(I18N.en,{
   'dz-empty-text':'Open Empty Project',
   'dz-zip-text':'Open Project (.zip)',
   'dz-continue-text':'Continue Editing',
+  'dz-url-btn-text':'📥 Open from URL',
+  'dz-url-hint-text':'Dropbox / any directly-downloadable URL of .rad / .ply / .splat etc. Dropbox links are auto-rewritten to dl=1.',
   'mf-title':'Minimap',
   'mf-hint':'Right-click hold to teleport',
   'mm-big-title':'Minimap',
@@ -16718,6 +16772,106 @@ async function dispatchFiles(fileList){
     }
   }
 }
+
+// ── URL → fetch → File → dispatchFiles ─────────────────────────────────
+// Lets the user paste a Dropbox (or any other direct-download) URL on the
+// home screen instead of dragging a file. The fetched bytes are wrapped
+// in a synthetic File and run through the same dispatchFiles() pipeline
+// the drag-drop / file-picker paths use, so every supported splat format
+// (.rad / .ply / .splat / .spz / .ksplat / .sog / …) and ZIP project files
+// work identically.
+//
+// Dropbox-specific normalisation:
+//   * dropbox.com/.../file?dl=0       → force dl=1
+//   * dropbox.com/...&dl=0&rlkey=…    → force dl=1 (legacy share form)
+//   * dropbox.com host with no dl=…   → append dl=1
+//   * www.dropbox.com → dl.dropboxusercontent.com is NOT used here — the
+//     ?dl=1 form responds with CORS headers (Access-Control-Allow-Origin:
+//     *), which is what we need for a cross-origin fetch.
+function _normalizeShareUrl(rawUrl){
+  let u;
+  try { u = new URL(rawUrl); } catch(_) { return rawUrl; }
+  if(/(^|\.)dropbox\.com$/i.test(u.hostname)){
+    // Strip dl=0, append dl=1 (idempotent)
+    u.searchParams.set('dl', '1');
+  }
+  return u.toString();
+}
+// Extract a sensible filename + extension from the URL path, so dispatchFiles
+// can route on extension (rad/ply/splat/etc.).
+function _filenameFromUrl(urlStr, fallback){
+  try {
+    const u = new URL(urlStr);
+    const last = u.pathname.split('/').filter(Boolean).pop() || '';
+    // Dropbox download URLs sometimes have a query-stripped path; if the path
+    // already includes the filename, use it. Otherwise fall back to whatever
+    // the user typed in the URL or a generic name.
+    if(last && /\.[a-z0-9]{1,6}$/i.test(last)) return decodeURIComponent(last);
+  } catch(_){}
+  return fallback || 'remote.rad';
+}
+window.openFromUrl = async function(){
+  const inp = document.getElementById('dz-url-input');
+  const raw = (inp && inp.value || '').trim();
+  if(!raw){
+    showUndoToast(window._lang==='en' ? '⚠ Paste a URL first' : '⚠ URL を入力してください');
+    return;
+  }
+  const url = _normalizeShareUrl(raw);
+  const fname = _filenameFromUrl(url, 'remote.rad');
+  const ext = (fname.split('.').pop() || '').toLowerCase();
+  const supported = ['rad','ply','splat','spz','ksplat','sog','pcsogs','pcsogszip','zip','obj','gltf','glb','fbx'];
+  if(!supported.includes(ext)){
+    showUndoToast(window._lang==='en'
+      ? `⚠ Unsupported extension: .${ext}`
+      : `⚠ 非対応の拡張子: .${ext}`);
+    return;
+  }
+  // Disable the button while fetching so a double-click can't queue two
+  // downloads of the same scene.
+  const btn = document.getElementById('dz-url-btn');
+  const btnTxt = document.getElementById('dz-url-btn-text');
+  const origTxt = btnTxt ? btnTxt.textContent : '';
+  if(btn) btn.disabled = true;
+  if(btnTxt) btnTxt.textContent = window._lang==='en' ? '… fetching' : '取得中…';
+  showUndoToast(window._lang==='en'
+    ? `📡 Fetching ${fname} …`
+    : `📡 ${fname} を取得中…`);
+  try {
+    const res = await fetch(url, { mode:'cors', cache:'no-store' });
+    if(!res.ok){
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
+    const buf = await res.arrayBuffer();
+    const f = new File([buf], fname, { type:'application/octet-stream' });
+    await dispatchFiles([f]);
+  } catch(e){
+    console.error('[openFromUrl]', e);
+    const msg = (e && e.message) || String(e);
+    // Most common failure mode is a CORS block when the host doesn't send
+    // Access-Control-Allow-Origin. Surface that hint specifically.
+    const corsHint = /Failed to fetch|NetworkError/i.test(msg)
+      ? (window._lang==='en' ? ' (CORS / network)' : ' (CORS / ネットワーク)')
+      : '';
+    showUndoToast((window._lang==='en'
+      ? `⚠ URL load failed: ${msg}`
+      : `⚠ URL読み込み失敗: ${msg}`) + corsHint);
+  } finally {
+    if(btn) btn.disabled = false;
+    if(btnTxt) btnTxt.textContent = origTxt;
+  }
+};
+// Convenience: pressing Enter inside the URL input fires the same handler.
+(function _wireUrlEnter(){
+  const inp = document.getElementById('dz-url-input');
+  if(!inp) return;
+  inp.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      window.openFromUrl();
+    }
+  });
+})();
 
 // File input
 const dropzone=document.getElementById('dropzone'),fi=document.getElementById('fi');
