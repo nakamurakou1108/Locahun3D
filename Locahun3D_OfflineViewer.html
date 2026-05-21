@@ -1290,7 +1290,7 @@ body{position:fixed;top:0;left:0;}
      toggleARMode() swaps its label to "AR 終了" + red state. -->
 <div id="topbar">
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-    <button id="tb-save-btn" onclick="saveProjectZip()" style="background:rgba(100,255,150,.08);border:1px solid rgba(100,255,150,.2);color:rgba(100,255,150,.7);border-radius:5px;padding:2px 8px;font-size:.72em;cursor:pointer;transition:all .15s;white-space:nowrap" onmouseover="this.style.background='rgba(100,255,150,.18)'" onmouseout="this.style.background='rgba(100,255,150,.08)'" title="ZIP Save">💾 <span id="tb-save-lbl">保存</span></button>
+    <button id="tb-save-btn" onclick="saveProjectZip()" style="background:rgba(100,255,150,.08);border:1px solid rgba(100,255,150,.2);color:rgba(100,255,150,.7);border-radius:5px;padding:2px 8px;font-size:.72em;cursor:pointer;transition:all .15s;white-space:nowrap" onmouseover="this.style.background='rgba(100,255,150,.18)'" onmouseout="this.style.background='rgba(100,255,150,.08)'" title="ZIP Save">💾 <span id="tb-save-lbl">オフライン保存</span></button>
     <!-- 読込 (load project ZIP) button removed: project ZIPs are now imported
          via the layer panel "📁 インポート" button (dispatchFiles routes
          .zip → _loadProjectZipFromFile automatically) or via drag-and-drop. -->
@@ -15406,7 +15406,7 @@ Object.assign(I18N.ja,{
   'ct-grid-cols':'列',
   'ct-grid-rows':'行',
   'ct-grid-opacity':'不透明度',
-  'tb-save-lbl':'保存',
+  'tb-save-lbl':'オフライン保存',
   'tb-load-lbl':'読込',
   'tb-report-lbl':'エラー報告',
   'tt-report':'エラー / 不具合を開発者に報告',
@@ -15651,7 +15651,7 @@ Object.assign(I18N.en,{
   'ct-grid-cols':'Cols',
   'ct-grid-rows':'Rows',
   'ct-grid-opacity':'Opacity',
-  'tb-save-lbl':'Save',
+  'tb-save-lbl':'Offline Save',
   'tb-load-lbl':'Load',
   'tb-report-lbl':'Report Bug',
   'tt-report':'Report a bug or issue to the developer',
