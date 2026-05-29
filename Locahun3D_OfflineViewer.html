@@ -2252,13 +2252,22 @@ body{position:fixed;top:0;left:0;}
     <div class="cm-group-body">
       <div class="cm-row">
         <select id="cm-sensor" onchange="onCamSensorPreset(this.value)" class="cm-input">
-          <option value="ff" id="ct-sensor-ff">フルサイズ (36 × 24)</option>
-          <option value="apsc" id="ct-sensor-apsc">APS-C (23.6 × 15.7)</option>
-          <option value="apsh" id="ct-sensor-apsh">APS-H (28.7 × 19)</option>
-          <option value="mft" id="ct-sensor-mft">マイクロフォーサーズ (17.3 × 13)</option>
-          <option value="m65" id="ct-sensor-m65">65mm (54.1 × 25.6)</option>
-          <option value="s35" id="ct-sensor-s35">Super 35 (24.9 × 14)</option>
-          <option value="bm46k" id="ct-sensor-bm">BMPCC 6K (23.1 × 12.99)</option>
+          <optgroup label="📷 Photo / Mirrorless" id="ct-sensor-group-photo">
+            <option value="ff"   id="ct-sensor-ff">フルサイズ (36 × 24)</option>
+            <option value="apsc" id="ct-sensor-apsc">APS-C (23.6 × 15.7)</option>
+            <option value="apsh" id="ct-sensor-apsh">APS-H (28.7 × 19)</option>
+            <option value="mft"  id="ct-sensor-mft">マイクロフォーサーズ (17.3 × 13)</option>
+          </optgroup>
+          <optgroup label="🎬 Cinema" id="ct-sensor-group-cine">
+            <option value="ax35og"    id="ct-sensor-ax35og">ARRI Alexa 35 — 4.6K Open Gate (27.99 × 19.22)</option>
+            <option value="ax35"      id="ct-sensor-ax35">ARRI Alexa 35 — 4K 16:9 (24.89 × 14.00)</option>
+            <option value="ax65"      id="ct-sensor-ax65">ARRI Alexa 65 (54.12 × 25.58)</option>
+            <option value="vraptor8k" id="ct-sensor-vraptor">RED V-Raptor 8K VV (40.96 × 21.60)</option>
+            <option value="venice2"   id="ct-sensor-venice2">Sony Venice 2 — 8.6K FF (35.90 × 24.00)</option>
+            <option value="ursa12k"   id="ct-sensor-ursa">Blackmagic URSA Cine 12K LF (35.63 × 23.32)</option>
+            <option value="c70"       id="ct-sensor-c70">Canon EOS C70 — Super 35 (26.20 × 13.80)</option>
+            <option value="bmpcc6k"   id="ct-sensor-bmpcc6k">BMPCC 6K (23.10 × 12.99)</option>
+          </optgroup>
           <option value="custom" id="ct-sensor-cust">カスタム…</option>
         </select>
       </div>
@@ -4523,14 +4532,35 @@ function _closeMeasureOnly(){
 //  CAMERA TOOL  (previz-style virtual camera + capture)
 // ══════════════════════════════════════════════════
 // Sensor presets in millimeters (width × height), real-world spec sheet values.
+// Sources cross-checked against vendor PDFs:
+//   ARRI Alexa 35  : arri.com/resource/blob/296424/.../alexa-35-recording-format-poster-data.pdf
+//   ARRI Alexa 65  : arri.com (Alexa 65 sensor 54.12 × 25.58 mm)
+//   RED V-Raptor   : docs.red.com/955-0199 (8K VV = 40.96 × 21.60 mm)
+//   Sony Venice 2  : pro.sony product page (8.6K full-frame 35.9 × 24.0 mm)
+//   Blackmagic URSA Cine 12K LF: blackmagicdesign.com tech-specs (35.63 × 23.32 mm)
+//   Canon EOS C70  : canon-europe.com (Super 35 26.2 × 13.8 mm)
+//   BMPCC 6K       : blackmagicdesign.com (23.10 × 12.99 mm)
+// Photo/mirrorless dimensions are standard ISO format references.
 const SENSOR_PRESETS = {
-  ff:   { w:36.0,  h:24.0  },
-  apsc: { w:23.6,  h:15.7  },
-  apsh: { w:28.7,  h:19.0  },
-  mft:  { w:17.3,  h:13.0  },
-  m65:  { w:54.12, h:25.59 },
-  s35:  { w:24.89, h:14.00 },
-  bm46k:{ w:23.10, h:12.99 },
+  // ── Photo / mirrorless ────────────────────────────────────────────
+  ff:   { w:36.0,  h:24.0,  group:'photo' },  // Full-frame
+  apsc: { w:23.6,  h:15.7,  group:'photo' },  // APS-C (Sony / Nikon)
+  apsh: { w:28.7,  h:19.0,  group:'photo' },  // APS-H (Canon 1D)
+  mft:  { w:17.3,  h:13.0,  group:'photo' },  // Micro Four Thirds
+  // ── Cinema ────────────────────────────────────────────────────────
+  ax35og:{ w:27.99, h:19.22, group:'cine' }, // ARRI Alexa 35 — 4.6K Open Gate
+  ax35:  { w:24.89, h:14.00, group:'cine' }, // ARRI Alexa 35 — 4K 16:9
+  ax65:  { w:54.12, h:25.58, group:'cine' }, // ARRI Alexa 65
+  vraptor8k:{ w:40.96, h:21.60, group:'cine' }, // RED V-Raptor 8K VV
+  venice2: { w:35.90, h:24.00, group:'cine' }, // Sony Venice 2 — 8.6K Full Frame
+  ursa12k: { w:35.63, h:23.32, group:'cine' }, // Blackmagic URSA Cine 12K LF
+  c70:    { w:26.20, h:13.80, group:'cine' }, // Canon EOS C70 — Super 35
+  bmpcc6k:{ w:23.10, h:12.99, group:'cine' }, // BMPCC 6K
+  // ── Legacy keys (kept so existing saved projects + capture metadata
+  //    still resolve to the matching modern preset) ─────────────────
+  m65:   { w:54.12, h:25.58, group:'cine', alias:'ax65' },
+  s35:   { w:24.89, h:14.00, group:'cine', alias:'ax35' },
+  bm46k: { w:23.10, h:12.99, group:'cine', alias:'bmpcc6k' },
 };
 const cam = {
   active: false,
