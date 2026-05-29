@@ -1356,7 +1356,7 @@ body{position:fixed;top:0;left:0;}
       background:linear-gradient(to bottom, rgba(255,180,84,.06), transparent)">
       <div style="display:flex;align-items:baseline;gap:14px">
         <strong style="font-size:1.25em;letter-spacing:.04em" data-i18n-key="manual-title">📖 ロケハン3D ユーザーマニュアル</strong>
-        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.0.2-alpha / 3DGS マルチビューア + プリビズ (αテスト版)</span>
+        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.0.3-alpha / 3DGS マルチビューア + プリビズ (αテスト版)</span>
       </div>
       <button onclick="closeManual()" style="background:transparent;border:1px solid rgba(255,255,255,.12);
         color:#aab;border-radius:6px;padding:6px 12px;font-size:.92em;cursor:pointer;font-family:inherit"
@@ -2612,10 +2612,12 @@ body.ar-active #dz{display:none !important;}
            style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);border:0;opacity:0;pointer-events:none">
   </div>
   <button class="demo-btn" id="emptyBtn">📄 <span id="dz-empty-text">空プロジェクトを開く</span></button>
-  <button class="demo-btn" id="dz-load-zip-btn" onclick="loadProjectZip()"
-    style="border-color:rgba(255,180,84,.3);color:rgba(255,180,84,.8)">
-    📦 <span id="dz-zip-text">プロジェクトを開く (.zip)</span>
-  </button>
+  <!-- "📦 プロジェクトを開く (.zip)" button removed in v0.0.3-alpha.
+       Dropping a .zip on the dropzone (or via the file picker) now
+       handles both project ZIPs AND zipped raw splat / mesh assets via
+       _loadProjectZipFromFile's fallback scan, so a separate button is
+       redundant. The window.loadProjectZip() helper is kept as a
+       programmatic entry point for any external triggers. -->
   <button class="demo-btn" id="dz-continue-btn" onclick="continueEditing()" style="display:none;
     border-color:rgba(100,255,150,.3);color:rgba(100,255,150,.8)">
     ▶ <span id="dz-continue-text">編集を続ける</span>
@@ -2632,6 +2634,39 @@ body.ar-active #dz{display:none !important;}
       <span class="cl-chev" aria-hidden="true">▾</span>
     </button>
     <div class="dz-changelog-body" id="dz-changelog-body" hidden>
+      <div class="cl-entry">
+        <div class="cl-entry-head">
+          <span class="cl-ver">v 0.0.3-alpha</span>
+          <span class="cl-date">2026-05-30</span>
+          <span class="cl-tag" id="cl-tag-v003">プリビズ拡張</span>
+        </div>
+        <ul class="cl-ja">
+          <li>キーボード操作を Google Earth Studio 準拠に: ↑↓←→ / T G / R F、Shift で 3 倍速</li>
+          <li>タッチ端末のジョイスティック右に上昇 / 下降 ▲▼ パッドを追加</li>
+          <li>カメラ位置保存 (🎥) — Camera フォルダに複数カメラを記録、レイヤーをクリックでテレポート</li>
+          <li>業界標準シネマカメラのセンサーサイズプリセット追加 (Alexa 35 / 65, RED V-Raptor, Venice 2, URSA 12K, C70, BMPCC)</li>
+          <li>カメラツールにロール (Z 軸) スライダ + 水平リセットを追加</li>
+          <li>カメラ情報バーンインに HEIGHT 行 (グリッド地面からの高さ) を追加</li>
+          <li>外側余白: マスクオーバーレイから GL ビューポートを実際に縮小する方式に変更</li>
+          <li>ビュー録画 (⏺) — MP4/WebM で MediaRecorder 経由、cbar の 測定 の右に配置</li>
+          <li>カメラアニメーション (🎞) — Catmull-Rom 曲線でスムーズなフライスルー、3D 上にマーカーとパス、MP4 書き出し、速度可変 (1s/m デフォルト)</li>
+          <li>ZIP ドロップ拡張: プロジェクト ZIP に加え、splat / メッシュ単体を圧縮した ZIP も自動展開して読込</li>
+          <li>カメラアニメ / 録画 / カメラ位置保存 など新ボタンの JA/EN ラベル + ツールチップ整備</li>
+        </ul>
+        <ul class="cl-en">
+          <li>Keyboard remapped to Google Earth Studio: ↑↓←→ / T G / R F, Shift triples the rate</li>
+          <li>Touch joystick gets an up / down ▲▼ pad to its right</li>
+          <li>Save camera pose (🎥) — multi-camera placement in a Camera folder, click a layer to teleport back</li>
+          <li>Industry-standard cinema sensor presets (Alexa 35 / 65, RED V-Raptor, Venice 2, URSA 12K, C70, BMPCC)</li>
+          <li>Camera tool: roll (Z-axis) slider + level reset</li>
+          <li>Capture burn-in: HEIGHT row (camera elevation above the world grid)</li>
+          <li>Outer margin: GL viewport is now actually scissored to the safe-frame instead of overlaid</li>
+          <li>View recording (⏺) — MP4 / WebM via MediaRecorder, moved to the cbar right of 測定</li>
+          <li>Camera animation (🎞) — Catmull-Rom smooth fly-through, 3D markers + path line, MP4 export, adjustable speed (1 s/m default)</li>
+          <li>ZIP drop now also accepts archives containing raw splat / mesh files, not just Locahun project ZIPs</li>
+          <li>JA/EN labels + tooltips for the new camera-anim / record / save-pose buttons</li>
+        </ul>
+      </div>
       <div class="cl-entry">
         <div class="cl-entry-head">
           <span class="cl-ver">v 0.0.2-alpha</span>
@@ -2656,7 +2691,7 @@ body.ar-active #dz{display:none !important;}
     </div>
   </div>
   <div class="dz-version-line">
-    <span id="tb-version">v 0.0.2-alpha</span>
+    <span id="tb-version">v 0.0.3-alpha</span>
   </div>
 </div>
 
@@ -16592,7 +16627,7 @@ Object.assign(I18N.ja,{
   'lbl-rot':'角度',
   'tt-edit-dbl':'ダブルクリックで編集',
   'manual-title':'📖 ロケハン3D ユーザーマニュアル',
-  'manual-version':'v 0.0.2-alpha / 3DGS マルチビューア + プリビズ (αテスト版)',
+  'manual-version':'v 0.0.3-alpha / 3DGS マルチビューア + プリビズ (αテスト版)',
   'manual-close':'閉じる ✕',
   'manual-grp-quick':'クイックスタート',
   'manual-grp-basic':'基本操作',
@@ -16840,7 +16875,7 @@ Object.assign(I18N.en,{
   'lbl-rot':'Angle',
   'tt-edit-dbl':'Double-click to edit',
   'manual-title':'📖 LOCAHUN 3D User Manual',
-  'manual-version':'v 0.0.2-alpha / 3DGS multi-viewer + previz (Alpha)',
+  'manual-version':'v 0.0.3-alpha / 3DGS multi-viewer + previz (Alpha)',
   'manual-close':'Close ✕',
   'manual-grp-quick':'QUICK START',
   'manual-grp-basic':'BASICS',
@@ -18063,7 +18098,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.2-alpha';
+const CURRENT_VERSION    = '0.0.3-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 

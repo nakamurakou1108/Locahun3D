@@ -1,6 +1,6 @@
 {
-  "version": "0.0.2-alpha",
+  "version": "0.0.3-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Mac perf pass (disable AA / emergency watchdog floor / shorter splat-active window) + polygon-1/4 toggle (was halve) + iPad full-quality load + demo data download button + assorted UI tweaks."
+  "notes": "Previz expansion: Google Earth Studio keyboard, multi-camera placement with teleport, view-rec (MP4) in cbar, smooth Catmull-Rom camera animation with 3D markers + path, scissor-based outer-margin view-shrink, cinema sensor presets (Alexa 35/65, V-Raptor, Venice 2, URSA 12K, C70, BMPCC), capture-burn-in HEIGHT row, touch elevation ▲▼ pad, generic-ZIP drop accepts raw splat/mesh archives."
 }
