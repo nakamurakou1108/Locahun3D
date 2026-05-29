@@ -1272,10 +1272,49 @@ body{position:fixed;top:0;left:0;}
   </div>
   <!-- Standalone #btnAddFigureTop merged into the オブジェクト追加 dropdown
        above so all "add new layer" entries live in one menu. -->
+  <!-- Multi-camera placement: save the current view (position / angle /
+       focal length / aspect / sensor) as a Camera layer inside an
+       automatically-created "Camera" folder. Hidden on phones via the
+       same media query that hides desktop-only widgets (#view-tl-btns
+       already toggled there). -->
+  <button id="btnSaveCamera" onclick="saveCameraLayer()"
+    style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);
+           color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;
+           font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;
+           white-space:nowrap;"
+    onmouseover="this.style.background='rgba(255,180,80,.18)';this.style.borderColor='rgba(255,200,120,.45)'"
+    onmouseout="this.style.background='rgba(20,20,22,.88)';this.style.borderColor='rgba(255,255,255,.18)'"
+    title="現在のカメラ位置・アングル・画角・アスペクト比を保存">🎥 <span id="lbl-save-camera">カメラ保存</span></button>
+  <!-- View recording (MP4 via MediaRecorder) — see startViewRecording()
+       and stopViewRecording(). On phones a sibling button placed left of
+       the AR button mirrors this; see #btnViewRecPhone below. -->
+  <button id="btnViewRec" onclick="toggleViewRecording()"
+    style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);
+           color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;
+           font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;
+           white-space:nowrap;"
+    onmouseover="this.style.background='rgba(255,80,80,.18)';this.style.borderColor='rgba(255,140,140,.45)'"
+    onmouseout="this.style.background='rgba(20,20,22,.88)';this.style.borderColor='rgba(255,255,255,.18)'"
+    title="ビューを MP4 で録画 / 停止">⏺ <span id="lbl-view-rec">録画</span></button>
+  <!-- Camera animation: open a side-panel to add multiple camera key
+       positions, preview the path, and export an FHD MP4. Phone-hidden
+       by the same #view-tl-btns media query. -->
+  <button id="btnCamAnim" onclick="toggleCamAnimPanel()"
+    style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);
+           color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;
+           font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;
+           white-space:nowrap;"
+    onmouseover="this.style.background='rgba(160,120,255,.18)';this.style.borderColor='rgba(180,140,255,.45)'"
+    onmouseout="this.style.background='rgba(20,20,22,.88)';this.style.borderColor='rgba(255,255,255,.18)'"
+    title="カメラパスを定義してアニメーション動画を書き出し">🎞 <span id="lbl-cam-anim">カメラアニメ</span></button>
   <button id="btnAvatarWalk" onclick="toggleAvatarWalk()" style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;white-space:nowrap;" onmouseover="this.style.background='rgba(120,200,255,.18)';this.style.borderColor='rgba(140,210,255,.45)'" onmouseout="this.style.background='rgba(20,20,22,.88)';this.style.borderColor='rgba(255,255,255,.18)'" title="アバター歩行モード（WASDでアバターを動かす）">🚶 <span id="lbl-walk">アバター歩行</span></button>
   <!-- AR mode (touch devices only — uses rear camera as backdrop + device
        orientation for camera control). Hidden on desktop via the same media
        query that hides other touch-only widgets. -->
+  <!-- Phone-only view-record button (sits to the LEFT of the AR button on
+       touch devices). On non-phones the equivalent control is #btnViewRec
+       above, hidden on phones by the same #view-tl-btns media query. -->
+  <button id="btnViewRecPhone" onclick="toggleViewRecording()" style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;white-space:nowrap;display:none;" title="ビューを MP4 で録画 / 停止">⏺ <span id="lbl-view-rec-phone">録画</span></button>
   <button id="btnAR" onclick="toggleARMode()" style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;font-size:.72em;cursor:pointer;transition:all .2s;letter-spacing:.02em;white-space:nowrap;display:none;" title="AR モード（背面カメラ越しに 3DGS を重ねて表示）">📱 <span id="lbl-ar">AR</span></button>
 </div>
 <!-- AR mode: WebGL-integrated camera passthrough. The off-screen video
@@ -2210,10 +2249,13 @@ body{position:fixed;top:0;left:0;}
   font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;color:#f8f8f8;
   text-shadow:0 1px 2px rgba(0,0,0,.85);">
   <!-- safe-frame box drawn dynamically by JS so it matches sensor aspect ratio.
-       Outside the box is a darkened mask (box-shadow inset on body); the box itself
-       has a subtle 1px border. -->
+       The renderer itself is scissored to this rect at draw time (see animate());
+       outside the rect is the GL clear color (black), so the mask overlay
+       used previously (box-shadow:0 0 0 9999px) is no longer needed and would
+       just double up the black. We keep a subtle 1 px border so the user can
+       still see the rectangle boundary against the surrounding letterbox. -->
   <div id="cam-frame" style="position:absolute;border:1px solid rgba(255,255,255,.6);
-    box-shadow:0 0 0 9999px rgba(0,0,0,1);box-sizing:border-box;">
+    box-sizing:border-box;">
     <!-- Grid SVG sized to the safe-frame; redrawn whenever frame layout / grid changes. -->
     <svg id="cam-grid-svg" style="position:absolute;inset:0;width:100%;height:100%;
       pointer-events:none;opacity:.85" preserveAspectRatio="none"></svg>
@@ -3392,6 +3434,8 @@ window.__dbg.setYaw  = (value) => { _yawTarget = value; if(typeof markDirty==='f
 Object.defineProperty(window.__dbg, 'touchUpHeld', { get: () => touchUpHeld });
 Object.defineProperty(window.__dbg, 'touchDnHeld', { get: () => touchDnHeld });
 window.__dbg.runFlyCamera = (dt) => updateFlyCamera(dt);
+Object.defineProperty(window.__dbg, 'yawTarget',   { get: () => _yawTarget   });
+Object.defineProperty(window.__dbg, 'pitchTarget', { get: () => _pitchTarget });
 // near=0.3: prevents very-close giant splats from swallowing the entire screen
 // (rainbow streak artifact during fast pans in big PortalCam scans).
 // 0.3m ≈ arm's length; below that, splats are clipped before they smear.
@@ -5321,6 +5365,672 @@ window.toggleCamTool = function(){
 
 window.addEventListener('resize', ()=>{ if(cam.active) layoutCamFrame(); });
 
+// ══════════════════════════════════════════════════
+//  CAMERA LAYER (multi-camera placement)
+//
+//  saveCameraLayer() captures the current viewport's camera state
+//  (position / yaw / pitch / roll / fov / aspect / sensor / focal /
+//  margin / WB / labels) into a new layer of type='camera'. Camera
+//  layers live inside an auto-created "Camera" folder so they're
+//  visually grouped in the layer panel.
+//
+//  Clicking a camera-type layer (single click → selectLayer →
+//  _teleportToCameraLayer) teleports the live viewport back to the
+//  saved pose and enables the camera tool, so the user can flip
+//  between multiple saved framings.
+// ══════════════════════════════════════════════════
+function _ensureCameraFolder(){
+  // Find first non-deleted folder whose name starts with "Camera". If
+  // missing, mint one via addFolder() then rename it. addFolder() places
+  // it at the top of the layer list, which matches the "Camera フォルダ
+  // を作成" requirement.
+  for(const L of layers){
+    if(L && L.type === 'folder' && /^camera\b/i.test(L.name || '')){
+      return L;
+    }
+  }
+  const F = window.addFolder();
+  F.name = 'Camera';
+  F.folderColor = '#88c5ff';
+  return F;
+}
+
+window.saveCameraLayer = function(){
+  try {
+    // Pull current camera state from live state — works whether the
+    // camera tool is open or not. We always source numerical fields from
+    // the live cam camera (focal/aspect/sensor/etc) so the saved layer
+    // captures exactly what the user is seeing right now.
+    if(cam.active){ _camPullFields(); }
+    const folder = _ensureCameraFolder();
+    const tag = new THREE.Group();
+    // Visible marker so the saved camera shows in the 3-D scene at its
+    // saved position. A short cone aligned with the saved view direction.
+    const coneGeo = new THREE.ConeGeometry(0.12, 0.32, 16);
+    coneGeo.translate(0, -0.16, 0);
+    coneGeo.rotateX(Math.PI / 2);
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: 0x88c5ff, transparent: true, opacity: 0.75
+    });
+    const cone = new THREE.Mesh(coneGeo, coneMat);
+    cone.renderOrder = 998;
+    tag.add(cone);
+    tag.position.copy(camPos);
+    // Apply yaw/pitch (no roll on the marker itself; the marker just
+    // signals POSE direction).
+    tag.rotation.set(pitch, yaw + Math.PI, 0, 'YXZ');
+    const L = addLayer({
+      name: `Camera ${_nextLayerNameNumber('camera')}`,
+      type: 'camera',
+      mesh: tag,
+    });
+    L.parentId = folder.id;
+    L.pos = { x: camPos.x, y: camPos.y, z: camPos.z };
+    // Saved pose — stored in RADIANS because that's the unit live state
+    // uses, no degree round-trip loss when teleporting back.
+    L.savedPose = {
+      pos:   { x: camPos.x, y: camPos.y, z: camPos.z },
+      yaw,
+      pitch,
+      roll:  (typeof roll === 'number') ? roll : 0,
+      fov,
+      focal:  cam.focal,
+      aspect: cam.aspect,
+      sensor: cam.sensor,
+      sw:     cam.sw,
+      sh:     cam.sh,
+      margin: cam.margin,
+      wb:     cam.wb,
+      rig:    cam.rig,
+      shot:   cam.shot,
+      env:    cam.env,
+      note:   cam.note,
+    };
+    renderLayerList();
+    selectLayer(L.id);
+    showUndoToast((window._lang === 'en') ? 'Camera saved' : 'カメラを保存しました');
+    return L;
+  } catch(e){
+    console.warn('[saveCameraLayer] failed:', e);
+    showUndoToast((window._lang === 'en') ? 'Save failed' : 'カメラ保存に失敗');
+    return null;
+  }
+};
+
+// Teleport the live viewport back to a saved camera pose. Called from
+// the patched selectLayer when the clicked layer is type==='camera'.
+function _teleportToCameraLayer(L){
+  if(!L || !L.savedPose) return;
+  const sp = L.savedPose;
+  if(sp.pos){
+    camPos.set(sp.pos.x, sp.pos.y, sp.pos.z);
+  }
+  if(typeof sp.yaw   === 'number'){ yaw   = sp.yaw;   _yawTarget   = sp.yaw;   }
+  if(typeof sp.pitch === 'number'){ pitch = sp.pitch; _pitchTarget = sp.pitch; }
+  if(typeof sp.roll  === 'number'){ roll  = sp.roll;  }
+  // Re-apply sensor / aspect / focal so the camera tool re-opens with the
+  // same framing the user saved.
+  if(typeof sp.focal  === 'number'){ cam.focal  = sp.focal;  }
+  if(typeof sp.aspect === 'number'){ cam.aspect = sp.aspect; }
+  if(typeof sp.sensor === 'string'){ cam.sensor = sp.sensor; }
+  if(typeof sp.sw     === 'number'){ cam.sw     = sp.sw;     }
+  if(typeof sp.sh     === 'number'){ cam.sh     = sp.sh;     }
+  if(typeof sp.margin === 'number'){ cam.margin = sp.margin; }
+  if(typeof sp.wb     === 'number'){ cam.wb     = sp.wb;     }
+  if(typeof sp.rig  === 'string'){ cam.rig  = sp.rig;  }
+  if(typeof sp.shot === 'string'){ cam.shot = sp.shot; }
+  if(typeof sp.env  === 'string'){ cam.env  = sp.env;  }
+  if(typeof sp.note === 'string'){ cam.note = sp.note; }
+  // Force the camera tool ON (per spec — "camera function activates")
+  if(!cam.active){
+    try { window.toggleCamTool(); } catch(e){}
+  } else {
+    // Already active — just push the updated cam fields into the UI.
+    try { _camPushFields(); setCamAspect(cam.aspect); applyCamSettings(); } catch(e){}
+  }
+  markDirty(8);
+}
+window._teleportToCameraLayer = _teleportToCameraLayer;
+
+// Patch selectLayer to teleport when a camera-type layer is clicked.
+// We wrap the previously-installed window.selectLayer so we don't have
+// to inline the teleport logic into the original definition (avoids
+// merge conflicts with the figure/multi-select code already there).
+(function(){
+  const _origSelectLayer = window.selectLayer;
+  window.selectLayer = function(id, ev){
+    const wasSelected = (selectedLayerId === id);
+    const ret = _origSelectLayer.call(this, id, ev);
+    // Only teleport on a "fresh" click (not a toggle-off), and not when
+    // the user is holding Ctrl/Cmd for multi-select.
+    const additive = !!(ev && (ev.ctrlKey || ev.metaKey));
+    if(!additive){
+      const L = findLayer(id);
+      if(L && L.type === 'camera' && L.savedPose){
+        // After the orig call, selectedLayerId is either id (newly
+        // selected) or null (deselected because it was the only one).
+        // Teleport in both cases so re-clicking the camera always
+        // jumps back to its pose, even after toggle-off.
+        _teleportToCameraLayer(L);
+      }
+    }
+    return ret;
+  };
+})();
+
+// ══════════════════════════════════════════════════
+//  VIEW RECORDING (MediaRecorder → MP4 / WebM)
+//
+//  Captures the live GL canvas into an MP4 (when the browser supports
+//  H.264 in MediaRecorder — Chrome/Edge on desktop, Safari) or a WebM
+//  fallback (Firefox, older Chrome). The output filename keeps the
+//  scene-time stamp + the project name so multi-take exports don't
+//  collide.
+//
+//  UI hook: two buttons (#btnViewRec on desktop/tablet, #btnViewRecPhone
+//  on phones) both call toggleViewRecording(). A red pulsing badge with
+//  the elapsed timer renders bottom-center while recording.
+// ══════════════════════════════════════════════════
+let _viewRec = {
+  active: false,
+  recorder: null,
+  chunks: [],
+  startedAt: 0,
+  timerEl: null,
+  intervalId: 0,
+  mime: '',
+  ext: 'webm',
+};
+
+function _pickRecorderMime(){
+  const candidates = [
+    // Prefer MP4 when supported — broadest device playback compat.
+    'video/mp4;codecs=avc1.42E01F,mp4a.40.2',
+    'video/mp4;codecs=avc1.42E01F',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  for(const m of candidates){
+    try {
+      if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+    } catch(e){}
+  }
+  return '';
+}
+
+function _setRecButtonState(active){
+  for(const id of ['btnViewRec','btnViewRecPhone']){
+    const el = document.getElementById(id);
+    if(!el) continue;
+    if(active){
+      el.style.background    = 'rgba(255,60,60,.92)';
+      el.style.borderColor   = 'rgba(255,140,140,.65)';
+      el.style.color         = '#fff';
+      el.dataset._recOn      = '1';
+    } else {
+      el.style.background    = 'rgba(20,20,22,.88)';
+      el.style.borderColor   = 'rgba(255,255,255,.18)';
+      el.style.color         = 'rgba(200,200,200,.85)';
+      delete el.dataset._recOn;
+    }
+  }
+  const lblPair = [['lbl-view-rec'],['lbl-view-rec-phone']];
+  for(const [id] of lblPair){
+    const el = document.getElementById(id);
+    if(el) el.textContent = active
+      ? ((window._lang === 'en') ? 'Stop' : '停止')
+      : ((window._lang === 'en') ? 'Rec'  : '録画');
+  }
+}
+
+function _ensureRecTimerEl(){
+  let el = document.getElementById('view-rec-timer');
+  if(el) return el;
+  el = document.createElement('div');
+  el.id = 'view-rec-timer';
+  el.style.cssText = [
+    'position:fixed','left:50%','transform:translateX(-50%)',
+    'bottom:18px','background:rgba(200,30,30,.92)','color:#fff',
+    'padding:4px 12px','border-radius:14px','font-size:.75em',
+    'letter-spacing:.06em','font-family:ui-monospace,monospace',
+    'z-index:5000','pointer-events:none','user-select:none',
+    'box-shadow:0 4px 14px rgba(0,0,0,.55)',
+    'display:flex','align-items:center','gap:6px'
+  ].join(';');
+  el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#fff;border-radius:50%;animation:rec-pulse 1.2s ease-in-out infinite"></span><span id="view-rec-time">00:00</span>';
+  document.body.appendChild(el);
+  if(!document.getElementById('rec-pulse-anim')){
+    const s = document.createElement('style');
+    s.id = 'rec-pulse-anim';
+    s.textContent = '@keyframes rec-pulse{0%,100%{opacity:1}50%{opacity:.25}}';
+    document.head.appendChild(s);
+  }
+  return el;
+}
+
+function _hideRecTimer(){
+  const el = document.getElementById('view-rec-timer');
+  if(el) el.remove();
+}
+
+function _fmtRecSeconds(s){
+  s = Math.max(0, Math.floor(s));
+  const m = Math.floor(s / 60), ss = s % 60;
+  return String(m).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
+}
+
+window.startViewRecording = function(){
+  if(_viewRec.active) return;
+  const mime = _pickRecorderMime();
+  if(!mime){
+    showUndoToast((window._lang === 'en')
+      ? 'Recording not supported on this browser'
+      : 'このブラウザでは録画非対応');
+    return;
+  }
+  let stream;
+  try {
+    // 60 fps cap so the recorder doesn't tear up Spark's variable-rate
+    // submit. 0 = "draw frame whenever canvas updates" which on mobile
+    // Chrome sometimes drops below 24 fps.
+    stream = canvas.captureStream(60);
+  } catch(e){
+    showUndoToast((window._lang === 'en')
+      ? 'Canvas capture failed' : 'キャプチャ失敗');
+    return;
+  }
+  let rec;
+  try {
+    rec = new MediaRecorder(stream, {
+      mimeType: mime,
+      videoBitsPerSecond: 12_000_000,    // ~12 Mb/s @ 1080p — visibly clean
+    });
+  } catch(e){
+    showUndoToast((window._lang === 'en')
+      ? 'Recorder init failed' : '録画開始に失敗');
+    return;
+  }
+  _viewRec.chunks = [];
+  _viewRec.mime   = mime;
+  _viewRec.ext    = mime.indexOf('mp4') !== -1 ? 'mp4' : 'webm';
+  rec.ondataavailable = (e) => {
+    if(e.data && e.data.size > 0) _viewRec.chunks.push(e.data);
+  };
+  rec.onstop = () => {
+    const blob = new Blob(_viewRec.chunks, { type: _viewRec.mime });
+    _viewRec.chunks = [];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const stamp = ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate())
+                + '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + pad(ts.getSeconds());
+    const projectEl = document.getElementById('tb-project-name');
+    const proj = (projectEl && projectEl.textContent.trim()) || 'Untitled';
+    a.href = url;
+    a.download = `${proj}_${stamp}.${_viewRec.ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    showUndoToast((window._lang === 'en')
+      ? `Saved ${a.download}` : `保存しました: ${a.download}`);
+  };
+  _viewRec.recorder  = rec;
+  _viewRec.active    = true;
+  _viewRec.startedAt = performance.now();
+  rec.start(1000);  // emit a chunk every second so we don't pile a huge tail
+  _setRecButtonState(true);
+  const el = _ensureRecTimerEl();
+  const tick = () => {
+    const sec = (performance.now() - _viewRec.startedAt) / 1000;
+    const t = document.getElementById('view-rec-time');
+    if(t) t.textContent = _fmtRecSeconds(sec);
+  };
+  tick();
+  _viewRec.intervalId = setInterval(tick, 250);
+};
+
+window.stopViewRecording = function(){
+  if(!_viewRec.active) return;
+  try { _viewRec.recorder.stop(); } catch(e){}
+  if(_viewRec.intervalId){
+    clearInterval(_viewRec.intervalId);
+    _viewRec.intervalId = 0;
+  }
+  _viewRec.active = false;
+  _viewRec.recorder = null;
+  _setRecButtonState(false);
+  _hideRecTimer();
+};
+
+window.toggleViewRecording = function(){
+  if(_viewRec.active) window.stopViewRecording();
+  else                window.startViewRecording();
+};
+
+// ══════════════════════════════════════════════════
+//  CAMERA ANIMATION  (Minecraft-Camera-Addon-style path export)
+//
+//  The user adds 2+ key positions (each captures camPos + yaw / pitch /
+//  roll + fov / focal / aspect). A linear-time interpolation between
+//  adjacent keys produces a fly-through; the user can preview it
+//  in-viewport and export an MP4 via the existing view-recorder pipeline.
+//  Default speed is 1 second per 1 metre travelled (1 s/m), adjustable
+//  via a slider in the side panel.
+// ══════════════════════════════════════════════════
+const camAnim = {
+  open: false,
+  keys: [],          // each: { pos, yaw, pitch, roll, fov, focal, aspect, sensor, sw, sh, margin }
+  speed: 1.0,        // seconds per metre travelled
+  playing: false,
+  rafId: 0,
+  startedAt: 0,
+  segments: null,    // [{ from, to, lenSec, accStart }]
+  totalSec: 0,
+};
+
+function _camAnimKeySnapshot(){
+  if(cam.active){ _camPullFields(); }
+  return {
+    pos:   { x: camPos.x, y: camPos.y, z: camPos.z },
+    yaw, pitch,
+    roll:  (typeof roll === 'number') ? roll : 0,
+    fov,
+    focal:  cam.focal,
+    aspect: cam.aspect,
+    sensor: cam.sensor,
+    sw:     cam.sw,
+    sh:     cam.sh,
+    margin: cam.margin,
+  };
+}
+
+function _camAnimRecomputeSegments(){
+  const k = camAnim.keys;
+  camAnim.segments = [];
+  camAnim.totalSec = 0;
+  for(let i = 0; i + 1 < k.length; i++){
+    const a = k[i].pos, b = k[i+1].pos;
+    const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const lenSec = Math.max(0.05, dist * camAnim.speed);
+    camAnim.segments.push({ from: i, to: i+1, lenSec, accStart: camAnim.totalSec });
+    camAnim.totalSec += lenSec;
+  }
+}
+
+function _camAnimSampleAt(t){
+  if(camAnim.keys.length === 0) return null;
+  if(camAnim.keys.length === 1) return camAnim.keys[0];
+  if(!camAnim.segments) _camAnimRecomputeSegments();
+  if(camAnim.segments.length === 0) return camAnim.keys[0];
+  if(t <= 0) return camAnim.keys[0];
+  if(t >= camAnim.totalSec) return camAnim.keys[camAnim.keys.length - 1];
+  let seg = camAnim.segments[0];
+  for(const s of camAnim.segments){
+    if(t >= s.accStart && t < s.accStart + s.lenSec){ seg = s; break; }
+  }
+  const localT = (t - seg.accStart) / seg.lenSec;
+  const a = camAnim.keys[seg.from], b = camAnim.keys[seg.to];
+  // Wrap-aware yaw interpolation so we always take the short arc
+  // (otherwise turning from 170° → -170° would spin nearly a full turn).
+  const shortDelta = (x) => {
+    while(x >  Math.PI) x -= 2*Math.PI;
+    while(x < -Math.PI) x += 2*Math.PI;
+    return x;
+  };
+  const lerp = (x,y) => x + (y - x) * localT;
+  return {
+    pos: {
+      x: lerp(a.pos.x, b.pos.x),
+      y: lerp(a.pos.y, b.pos.y),
+      z: lerp(a.pos.z, b.pos.z),
+    },
+    yaw:    a.yaw   + shortDelta(b.yaw   - a.yaw)   * localT,
+    pitch:  a.pitch + (b.pitch - a.pitch) * localT,
+    roll:   a.roll  + (b.roll  - a.roll)  * localT,
+    fov:    lerp(a.fov,   b.fov),
+    focal:  lerp(a.focal, b.focal),
+    aspect: lerp(a.aspect, b.aspect),
+    sensor: b.sensor,
+    sw:     lerp(a.sw, b.sw),
+    sh:     lerp(a.sh, b.sh),
+    margin: lerp(a.margin, b.margin),
+  };
+}
+
+function _camAnimApplySample(s){
+  if(!s) return;
+  camPos.set(s.pos.x, s.pos.y, s.pos.z);
+  yaw   = _yawTarget   = s.yaw;
+  pitch = _pitchTarget = s.pitch;
+  if(typeof s.roll === 'number') roll = s.roll;
+  if(typeof s.focal  === 'number') cam.focal  = s.focal;
+  if(typeof s.aspect === 'number') cam.aspect = s.aspect;
+  if(typeof s.sw     === 'number') cam.sw     = s.sw;
+  if(typeof s.sh     === 'number') cam.sh     = s.sh;
+  if(typeof s.margin === 'number') cam.margin = s.margin;
+  if(cam.active){
+    try { applyCamSettings(); } catch(e){}
+  } else {
+    fov = s.fov;
+    camera.fov = s.fov;
+    camera.updateProjectionMatrix();
+  }
+  markDirty(4);
+}
+
+function _camAnimRenderPanel(){
+  const p = document.getElementById('cam-anim-panel');
+  if(!p) return;
+  const lang = (window._lang === 'en') ? 'en' : 'ja';
+  const t = (en, ja) => (lang === 'en' ? en : ja);
+  const nKeys = camAnim.keys.length;
+  const ready = nKeys >= 2;
+  const nextLabel = `${t('Add Camera', 'カメラ')} ${nKeys + 1} ${t('position', '位置を保存')}`;
+  let listHtml = '';
+  for(let i = 0; i < nKeys; i++){
+    const k = camAnim.keys[i];
+    listHtml += `
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;margin:2px 0;
+                  background:rgba(160,120,255,.08);border:1px solid rgba(180,140,255,.18);
+                  border-radius:5px;font-size:.78em">
+        <span style="color:#cbb6ff;flex:0 0 auto">📌 ${t('Cam', 'カメラ')} ${i+1}</span>
+        <span style="color:#888;flex:1;font-family:ui-monospace,monospace;font-size:.85em">
+          X${k.pos.x.toFixed(1)} Y${k.pos.y.toFixed(1)} Z${k.pos.z.toFixed(1)}
+        </span>
+        <button onclick="window.camAnimGotoKey(${i})"
+          style="background:rgba(160,120,255,.18);border:1px solid rgba(180,140,255,.35);
+                 color:#e0ccff;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:.85em">
+          ${t('Go', '移動')}
+        </button>
+        <button onclick="window.camAnimRemoveKey(${i})"
+          style="background:rgba(255,80,80,.15);border:1px solid rgba(255,120,120,.3);
+                 color:#ffb0b0;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:.85em">
+          ×
+        </button>
+      </div>`;
+  }
+  p.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <strong style="flex:1;color:#cbb6ff;letter-spacing:.04em">🎞 ${t('Camera Animation', 'カメラアニメーション')}</strong>
+      <button onclick="window.toggleCamAnimPanel()"
+        style="background:transparent;border:1px solid rgba(255,255,255,.18);
+               color:#aaa;width:24px;height:24px;border-radius:4px;cursor:pointer">×</button>
+    </div>
+    <p style="font-size:.74em;color:#9c8fb8;margin:0 0 8px 0;line-height:1.45">
+      ${nKeys === 0
+        ? t('Move the view to where Camera 1 should start, then press "Save position".',
+            'カメラ1の開始位置にビューを移動し、「位置を保存」を押してください。')
+        : nKeys === 1
+        ? t('Move to Camera 2 and save again. You need 2+ keys to preview / export.',
+            'カメラ2に移動し、再度「位置を保存」してください。プレビュー/書き出しには最低2点必要です。')
+        : t('Add more keys, preview the path, or export an MP4.',
+            'さらに点を追加、プレビュー、または MP4 書き出しが可能です。')}
+    </p>
+    <button onclick="window.camAnimAddKey()" style="width:100%;padding:8px;margin-bottom:8px;
+      background:rgba(160,120,255,.18);border:1px solid rgba(180,140,255,.4);
+      color:#e0ccff;border-radius:6px;cursor:pointer;font-weight:600">
+      ➕ ${nextLabel}
+    </button>
+    <div style="max-height:38vh;overflow-y:auto;margin-bottom:8px">${listHtml}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <label style="font-size:.76em;color:#bbb;min-width:70px">
+        ${t('Speed', '速度')} (s/m)
+      </label>
+      <input type="range" id="cam-anim-speed-slider" min="0.1" max="10" step="0.1"
+        value="${camAnim.speed}"
+        oninput="window.camAnimSetSpeed(parseFloat(this.value))"
+        style="flex:1;accent-color:#b594ff">
+      <input type="number" id="cam-anim-speed" min="0.1" max="60" step="0.1"
+        value="${camAnim.speed}"
+        oninput="window.camAnimSetSpeed(parseFloat(this.value))"
+        style="width:54px;background:#1a1a1f;color:#fff;border:1px solid rgba(255,255,255,.18);
+               border-radius:4px;padding:2px 4px;font-size:.84em">
+    </div>
+    <div style="font-size:.72em;color:#777;margin-bottom:8px">
+      ${t('Total duration', '総再生時間')}: <span id="cam-anim-total">${camAnim.totalSec.toFixed(2)}</span> s
+    </div>
+    <div style="display:flex;gap:6px">
+      <button onclick="window.camAnimPreview()" ${ready ? '' : 'disabled'}
+        style="flex:1;padding:7px;background:rgba(120,200,255,.18);
+               border:1px solid rgba(140,210,255,.4);color:#cce8ff;
+               border-radius:6px;cursor:${ready?'pointer':'not-allowed'};
+               opacity:${ready?1:.4};font-weight:600">
+        ▶ ${camAnim.playing ? t('Stop','停止') : t('Preview','プレビュー')}
+      </button>
+      <button onclick="window.camAnimRecordExport()" ${ready ? '' : 'disabled'}
+        style="flex:1;padding:7px;background:rgba(255,80,80,.18);
+               border:1px solid rgba(255,140,140,.4);color:#ffd6d6;
+               border-radius:6px;cursor:${ready?'pointer':'not-allowed'};
+               opacity:${ready?1:.4};font-weight:600">
+        ⏺ ${t('Record &amp; Export','録画&書き出し')}
+      </button>
+    </div>`;
+}
+
+window.toggleCamAnimPanel = function(){
+  let p = document.getElementById('cam-anim-panel');
+  if(!p){
+    p = document.createElement('div');
+    p.id = 'cam-anim-panel';
+    p.style.cssText = [
+      'position:fixed','top:90px','right:14px','width:300px',
+      'background:rgba(20,20,22,.97)','border:1px solid rgba(180,140,255,.25)',
+      'border-radius:10px','padding:14px','z-index:300',
+      'box-shadow:0 8px 26px rgba(0,0,0,.6)',
+      'font-family:ui-sans-serif,system-ui,sans-serif','color:#e8e8e8',
+      'max-height:80vh','overflow-y:auto','display:none'
+    ].join(';');
+    document.body.appendChild(p);
+  }
+  camAnim.open = !camAnim.open;
+  p.style.display = camAnim.open ? 'block' : 'none';
+  if(camAnim.open) _camAnimRenderPanel();
+};
+
+window.camAnimAddKey = function(){
+  camAnim.keys.push(_camAnimKeySnapshot());
+  _camAnimRecomputeSegments();
+  _camAnimRenderPanel();
+};
+
+window.camAnimRemoveKey = function(i){
+  camAnim.keys.splice(i, 1);
+  _camAnimRecomputeSegments();
+  _camAnimRenderPanel();
+};
+
+window.camAnimGotoKey = function(i){
+  const k = camAnim.keys[i]; if(!k) return;
+  _camAnimApplySample(k);
+};
+
+window.camAnimSetSpeed = function(v){
+  if(!isFinite(v) || v <= 0) return;
+  camAnim.speed = Math.max(0.05, Math.min(60, v));
+  _camAnimRecomputeSegments();
+  // Cheap re-render: just refresh the total seconds text + sync widgets.
+  const tEl = document.getElementById('cam-anim-total');
+  if(tEl) tEl.textContent = camAnim.totalSec.toFixed(2);
+  const s1 = document.getElementById('cam-anim-speed-slider');
+  const s2 = document.getElementById('cam-anim-speed');
+  if(s1 && parseFloat(s1.value) !== camAnim.speed) s1.value = camAnim.speed;
+  if(s2 && parseFloat(s2.value) !== camAnim.speed) s2.value = camAnim.speed;
+};
+
+function _camAnimTick(){
+  if(!camAnim.playing) return;
+  const tSec = (performance.now() - camAnim.startedAt) / 1000;
+  if(tSec >= camAnim.totalSec){
+    _camAnimApplySample(camAnim.keys[camAnim.keys.length - 1]);
+    camAnim.playing = false;
+    _camAnimRenderPanel();
+    return;
+  }
+  _camAnimApplySample(_camAnimSampleAt(tSec));
+  camAnim.rafId = requestAnimationFrame(_camAnimTick);
+}
+
+window.camAnimPreview = function(){
+  if(camAnim.keys.length < 2) return;
+  if(camAnim.playing){
+    camAnim.playing = false;
+    if(camAnim.rafId) cancelAnimationFrame(camAnim.rafId);
+    _camAnimRenderPanel();
+    return;
+  }
+  _camAnimRecomputeSegments();
+  _camAnimApplySample(camAnim.keys[0]);
+  camAnim.playing   = true;
+  camAnim.startedAt = performance.now();
+  camAnim.rafId     = requestAnimationFrame(_camAnimTick);
+  _camAnimRenderPanel();
+};
+
+window.camAnimRecordExport = function(){
+  if(camAnim.keys.length < 2) return;
+  _camAnimRecomputeSegments();
+  // Hide the side panel during recording so it doesn't appear in the
+  // exported video.
+  const p = document.getElementById('cam-anim-panel');
+  const prevDisplay = p ? p.style.display : '';
+  if(p) p.style.display = 'none';
+  // Hide the safe-frame border too — capture should be the full
+  // rendered view without UI chrome. Save and restore.
+  const cf = document.getElementById('cam-frame');
+  const prevCf = cf ? cf.style.display : '';
+  if(cf) cf.style.display = 'none';
+  // Start the existing canvas recorder; it writes a file on stop().
+  window.startViewRecording();
+  _camAnimApplySample(camAnim.keys[0]);
+  camAnim.playing   = true;
+  camAnim.startedAt = performance.now();
+  const tickRec = () => {
+    if(!camAnim.playing){ return; }
+    const tSec = (performance.now() - camAnim.startedAt) / 1000;
+    if(tSec >= camAnim.totalSec){
+      _camAnimApplySample(camAnim.keys[camAnim.keys.length - 1]);
+      camAnim.playing = false;
+      // small tail so the final frame lands in the recorder buffer
+      setTimeout(() => {
+        window.stopViewRecording();
+        if(p)  p.style.display  = prevDisplay;
+        if(cf) cf.style.display = prevCf;
+        _camAnimRenderPanel();
+      }, 300);
+      return;
+    }
+    _camAnimApplySample(_camAnimSampleAt(tSec));
+    requestAnimationFrame(tickRec);
+  };
+  requestAnimationFrame(tickRec);
+};
+
 // Render the active grids onto a 2D canvas of the cropped image. Mirrors the SVG
 // drawCamGrid logic so the JPEG matches what the viewport showed (when the user
 // has "グリッド/セーフ枠も焼き込み" enabled).
@@ -6545,6 +7255,24 @@ function showHUD() {
   if(mmBtn && _mmUserVisible) mmBtn.classList.add('on');
   const vtlb=document.getElementById('view-tl-btns');
   if(vtlb) vtlb.style.display='flex';
+  // Phone-tier (mobile short-edge < 700 px) gates: multi-camera, view-rec
+  // and camera-anim are intentionally NOT exposed on phones (per spec —
+  // "Win/Mac/iPad/タブレットに実装") because the camera tool needs a wider
+  // viewport to be usable. On phones we still expose the phone-style
+  // record button placed left of the AR button.
+  const _isPhoneTier = (typeof _splatPerfTier !== 'undefined' && _splatPerfTier === 'phone');
+  const _phoneHide = (id, hide) => {
+    const el = document.getElementById(id);
+    if(el) el.style.display = hide ? 'none' : '';
+  };
+  _phoneHide('btnSaveCamera', _isPhoneTier);
+  _phoneHide('btnCamAnim',    _isPhoneTier);
+  _phoneHide('btnViewRec',    _isPhoneTier);
+  // Phone-only mirror of the rec button — visible ONLY on phones, lives
+  // inside #view-tl-btns next to btnAR (which is already phone-/tablet-
+  // visible via the (pointer:coarse) media query).
+  const _btnViewRecPhone = document.getElementById('btnViewRecPhone');
+  if(_btnViewRecPhone) _btnViewRecPhone.style.display = _isPhoneTier ? 'inline-block' : 'none';
   requestMinimapUpdate();
 }
 let _hideDzTimer=null;
@@ -7635,17 +8363,37 @@ function updateFlyCamera(dt){
   camera.getWorldDirection(_fwdVec);
   _rgtVec.set(-Math.cos(yaw),0,Math.sin(yaw));
 
-  // Keyboard contribution (WASD/QE) — uses Shift for the 5× sprint speed.
+  // Keyboard contribution — uses Shift for the 5× sprint speed.
+  //   W/A/S/D  : forward / strafe (canonical)
+  //   Q/E      : vertical move (kept for backward compatibility)
+  //   R/F      : vertical move (Google Earth Studio binding)
+  //   Touch ▲/▼: same vertical axis
+  // The vertical sources sum so a user mixing keyboard + tablet can layer
+  // them; cancellation works naturally (Q + E = 0).
   const fwKb=(keys.KeyW?1:0)-(keys.KeyS?1:0);
   const rtKb=(keys.KeyD?1:0)-(keys.KeyA?1:0);
-  // Q/E remains the keyboard up/down binding; the touch ▲/▼ buttons
-  // contribute on top of it so a user with both a keyboard and a tablet
-  // pen can mix sources.
   const up  =(keys.KeyE?1:0)-(keys.KeyQ?1:0)
+            +(keys.KeyR?1:0)-(keys.KeyF?1:0)
             +(touchUpHeld?1:0)-(touchDnHeld?1:0);
   if(fwKb!==0) camPos.addScaledVector(_fwdVec, fwKb*kbSpd*dt);
   if(rtKb!==0) camPos.addScaledVector(_rgtVec, rtKb*kbSpd*dt);
-  if(up!==0)   camPos.y += up*kbSpd*dt;
+  if(up!==0)   camPos.y += Math.sign(up)*kbSpd*dt;
+
+  // ── Look-around via Arrow keys + T/G (Earth Studio bindings) ────────
+  // Bumps the same _yawTarget / _pitchTarget the mouse pointer-lock
+  // pipeline drives, so motion lerps in identically to a drag look.
+  // Rate matches the gamepad right-stick speed (2 rad/s ≈ 115°/sec at
+  // full press), so all three input modes feel consistent.
+  const yawIn   = (keys.ArrowLeft?1:0) - (keys.ArrowRight?1:0);
+  const pitchIn = (keys.ArrowDown?1:0) - (keys.ArrowUp?1:0)
+                + (keys.KeyG?1:0)     - (keys.KeyT?1:0);
+  if(yawIn !== 0 || pitchIn !== 0){
+    const LOOK_RATE = 2.0;       // rad/sec at full press
+    _yawTarget   += yawIn   * LOOK_RATE * dt;
+    _pitchTarget  = Math.max(-1.55,
+                    Math.min( 1.55,
+                      _pitchTarget + pitchIn * LOOK_RATE * dt));
+  }
 
   // Joystick contribution — two-zone speed:
   //   inner 0.5 of the deflection range (|joy| ≤ 0.5)  → analog up to camSpeed
@@ -9967,7 +10715,7 @@ function applyI18n(){
     el.innerHTML=T(k);
   });
   // HUD labels
-  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-recommended','em-h-title','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','lbl-walk','giz-pt-a','giz-pt-b','giz-pt-c','giz-world-a','giz-world-b','giz-world-c','giz-step','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
+  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-recommended','em-h-title','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','lbl-walk','lbl-save-camera','lbl-view-rec','lbl-view-rec-phone','lbl-cam-anim','giz-pt-a','giz-pt-b','giz-pt-c','giz-world-a','giz-world-b','giz-world-c','giz-step','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.textContent=T(id);
   });
   // HUD info-box edit tooltip + dropzone titles
@@ -10106,7 +10854,7 @@ window.addEventListener('popstate', ()=>{
   }
 });
 
-const LAYER_ICONS={ splat:'✨', obj:'📐', cube:'📦', sphere:'⚽', folder:'📁', light:'💡', event:'🟠', figure:'👤' };
+const LAYER_ICONS={ splat:'✨', obj:'📐', cube:'📦', sphere:'⚽', folder:'📁', light:'💡', event:'🟠', figure:'👤', camera:'🎥' };
 
 // ── Per-layer Splat axis-flip (180° rotation around X / Y / Z, composable) ──
 const FLIP_QUATS = {
@@ -12934,7 +13682,10 @@ function animate(now) {
 
   // ── Conditions that require continuous rendering ──
   const hasCamKey = keys.KeyW||keys.KeyS||keys.KeyA||keys.KeyD||
-                    keys.KeyQ||keys.KeyE||keys.ShiftLeft||keys.ShiftRight||
+                    keys.KeyQ||keys.KeyE||keys.KeyR||keys.KeyF||
+                    keys.KeyT||keys.KeyG||
+                    keys.ArrowUp||keys.ArrowDown||keys.ArrowLeft||keys.ArrowRight||
+                    keys.ShiftLeft||keys.ShiftRight||
                     touchUpHeld||touchDnHeld;
   const hasDrag      = dragOn || !!lpv.dragging;
   const hasJoy       = joyDX!==0 || joyDY!==0;
@@ -13140,9 +13891,47 @@ function animate(now) {
     }
   }
   // ── Render ──
+  // When the camera tool's safe-frame is active, actually CONSTRAIN the
+  // GL viewport to the frame rect so the scene literally renders inside
+  // the frame instead of being rendered full-screen and then visually
+  // covered by an overlay mask. The surrounding area is cleared once to
+  // black for the surrounding "letterbox" look; the scissor then keeps
+  // subsequent draws inside the frame. camera.aspect also tracks the
+  // frame so the projected view fits the frame exactly.
   const _t0 = performance.now();
+  const _camActiveNow = (cam && cam.active);
+  let _camViewportRect = null;
+  if(_camActiveNow){
+    try {
+      _camViewportRect = _camFrameRect();
+      const r = _camViewportRect;
+      // Clear the full canvas first so the area outside the safe-frame
+      // is solid black instead of stale framebuffer content from the
+      // previous, larger render.
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, innerWidth, innerHeight);
+      renderer.setScissor(0, 0, innerWidth, innerHeight);
+      renderer.clear();
+      // Convert CSS top-down → GL bottom-up viewport coords.
+      const yFromBottom = r.viewportH - r.y - r.h;
+      renderer.setViewport(r.x, yFromBottom, r.w, r.h);
+      renderer.setScissor(r.x, yFromBottom, r.w, r.h);
+      renderer.setScissorTest(true);
+      camera.aspect = r.w / Math.max(1, r.h);
+      camera.updateProjectionMatrix();
+    } catch(e){ _camViewportRect = null; }
+  }
   if(_useOrtho){ _syncOrthoCamera(); renderer.render(scene,_orthoCamera); }
   else renderer.render(scene,camera);
+  if(_camActiveNow && _camViewportRect){
+    // Restore full-viewport state so HUD overlays, RT passes etc.
+    // outside the render loop continue to behave normally.
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, innerWidth, innerHeight);
+    renderer.setScissor(0, 0, innerWidth, innerHeight);
+    camera.aspect = innerWidth / Math.max(1, innerHeight);
+    camera.updateProjectionMatrix();
+  }
   const _renderMs = performance.now() - _t0;
   // CSS reprojection bookkeeping: the freshly-rendered frame embeds the
   // current yaw/pitch, so any predictive canvas offset that was applied
@@ -15427,6 +16216,12 @@ Object.assign(I18N.ja,{
   'cl-tag-init':'初版',
   'lbl-walk':'アバター歩行',
   'lbl-walk-repos':'アバター再配置',
+  'lbl-save-camera':'カメラ保存',
+  'lbl-view-rec':'録画',
+  'lbl-view-rec-phone':'録画',
+  'lbl-cam-anim':'カメラアニメ',
+  'ct-roll':'ロール',
+  'ct-roll-level':'水平',
   'tt-walk':'アバター歩行モード（WASD でアバターを移動）',
   'tt-walk-repos':'アバターを現在のビュー位置に再配置',
   'walk-on':'🚶 アバター歩行モード ON — WASD で移動',
@@ -15666,6 +16461,12 @@ Object.assign(I18N.en,{
   'cl-tag-init':'Initial',
   'lbl-walk':'Avatar Walk',
   'lbl-walk-repos':'Reposition Avatar',
+  'lbl-save-camera':'Save Camera',
+  'lbl-view-rec':'Rec',
+  'lbl-view-rec-phone':'Rec',
+  'lbl-cam-anim':'Cam Anim',
+  'ct-roll':'Roll',
+  'ct-roll-level':'Level',
   'tt-walk':'Avatar walk mode (WASD moves the avatar)',
   'tt-walk-repos':'Reposition the avatar to current view',
   'walk-on':'🚶 Avatar walk ON — move with WASD',
@@ -15863,12 +16664,25 @@ window.addEventListener('keydown',e=>{
     if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
   keys[e.code]=true;
-  if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ShiftLeft','ShiftRight'].includes(e.code)){
+  // Movement / rotation keys that should drive continuous render frames.
+  // Google Earth Studio bindings now included:
+  //   R/F      — vertical move (up/down), parallel to existing Q/E
+  //   T/G      — pitch up/down (alternative to ArrowUp/ArrowDown)
+  //   Arrows   — yaw/pitch (look around without mouse drag)
+  // Existing bindings retained: W/A/S/D translate, Q/E vertical, Shift sprint.
+  if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','KeyR','KeyF','KeyT','KeyG',
+      'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+      'ShiftLeft','ShiftRight'].includes(e.code)){
     markDirty(3);
     if(layers.some(L=>L.type==='splat')) bumpSplatActive(2000);
+    // Arrow keys would otherwise scroll the page when the user hasn't
+    // focused anything — eat them so look-around stays responsive.
+    if(e.code.startsWith('Arrow')) e.preventDefault();
   }
   if(e.code === 'Space' && walkMode.active) markDirty(3);
-  if(e.code==='KeyR') window.flipOrientation();
+  // (KeyR no longer triggers flipOrientation — Earth Studio uses R for
+  //  vertical UP. Per-layer X/Y/Z flip buttons in the transform panel
+  //  cover the same orientation-fix use case manually.)
   if(e.code==='KeyM') toggleMeasure();
   // projection toggle removed
   if(e.code==='KeyZ'){ e.preventDefault();
@@ -15901,7 +16715,9 @@ window.addEventListener('keydown',e=>{
 window.addEventListener('keyup',e=>{
   if(_isTypingInInput()) return;
   keys[e.code]=false;
-  if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','ShiftLeft','ShiftRight'].includes(e.code)){
+  if(['KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','KeyR','KeyF','KeyT','KeyG',
+      'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+      'ShiftLeft','ShiftRight'].includes(e.code)){
     markDirty(8); // extra frames after movement stops (Spark re-sort settling)
     if(layers.some(L=>L.type==='splat')) bumpSplatActive(2500);
   }
@@ -15914,7 +16730,10 @@ window.addEventListener('keyup',e=>{
   // (typically within 30-50ms) will set it back to true.
   if(e.code === 'ShiftLeft' || e.code === 'ShiftRight'){
     if(!e.shiftKey){
-      keys.KeyW = keys.KeyS = keys.KeyA = keys.KeyD = keys.KeyQ = keys.KeyE = false;
+      keys.KeyW = keys.KeyS = keys.KeyA = keys.KeyD =
+        keys.KeyQ = keys.KeyE = keys.KeyR = keys.KeyF =
+        keys.KeyT = keys.KeyG = false;
+      keys.ArrowUp = keys.ArrowDown = keys.ArrowLeft = keys.ArrowRight = false;
     }
   }
 });
