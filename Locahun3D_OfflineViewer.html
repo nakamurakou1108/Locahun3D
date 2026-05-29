@@ -8382,13 +8382,18 @@ function updateFlyCamera(dt){
   // ── Look-around via Arrow keys + T/G (Earth Studio bindings) ────────
   // Bumps the same _yawTarget / _pitchTarget the mouse pointer-lock
   // pipeline drives, so motion lerps in identically to a drag look.
-  // Rate matches the gamepad right-stick speed (2 rad/s ≈ 115°/sec at
-  // full press), so all three input modes feel consistent.
+  // 0.9 rad/s ≈ 52 °/s ≈ Google Earth Studio's arrow-key ramp — slow
+  // enough that a quick tap nudges a few degrees instead of crossing
+  // the whole pitch clamp in under a second. Hold Shift to triple the
+  // rate when the user does want fast look-around (mirrors the camSpeed
+  // sprint multiplier the same Shift key already drives for translate).
   const yawIn   = (keys.ArrowLeft?1:0) - (keys.ArrowRight?1:0);
   const pitchIn = (keys.ArrowDown?1:0) - (keys.ArrowUp?1:0)
                 + (keys.KeyG?1:0)     - (keys.KeyT?1:0);
   if(yawIn !== 0 || pitchIn !== 0){
-    const LOOK_RATE = 2.0;       // rad/sec at full press
+    const baseRate = 0.9;
+    const sprint   = (keys.ShiftLeft || keys.ShiftRight) ? 3.0 : 1.0;
+    const LOOK_RATE = baseRate * sprint;
     _yawTarget   += yawIn   * LOOK_RATE * dt;
     _pitchTarget  = Math.max(-1.55,
                     Math.min( 1.55,
@@ -10738,6 +10743,27 @@ function applyI18n(){
   if(_camResetBtn && _camResetBtn.parentElement) _camResetBtn.parentElement.title=T('tt-cam-reset');
   // Folder add button (in layer panel)
   document.querySelectorAll('button[onclick*="addFolder"]').forEach(b=>{ b.title=T('tt-folder-add'); });
+  // Camera-tool top-row additions (multi-cam, view-rec, cam-anim) — their
+  // title attributes were authored in JA in markup; translate them on
+  // every language switch so EN users see English tooltips.
+  const _camTopBtns = [
+    ['btnSaveCamera',     'tt-save-camera'],
+    ['btnViewRec',        'tt-view-rec'],
+    ['btnViewRecPhone',   'tt-view-rec'],
+    ['btnCamAnim',        'tt-cam-anim'],
+  ];
+  for(const [id, key] of _camTopBtns){
+    const el = document.getElementById(id);
+    if(el) el.title = T(key);
+  }
+  // Re-render the cam-anim panel (if open) so its inline-bilingual content
+  // refreshes on language switch — the panel paints once at toggle time
+  // and otherwise only on key add/remove, so without this hook it'd keep
+  // the old-language strings until the user adds a key.
+  if(typeof camAnim !== 'undefined' && camAnim.open
+     && typeof _camAnimRenderPanel === 'function'){
+    try { _camAnimRenderPanel(); } catch(e){}
+  }
   // Save/Load buttons in topbar
   document.querySelectorAll('#topbar button').forEach(b=>{
     const oc=b.getAttribute('onclick')||'';
@@ -16220,6 +16246,9 @@ Object.assign(I18N.ja,{
   'lbl-view-rec':'録画',
   'lbl-view-rec-phone':'録画',
   'lbl-cam-anim':'カメラアニメ',
+  'tt-save-camera':'現在のカメラ位置・アングル・画角・アスペクト比を保存',
+  'tt-view-rec':'ビューを MP4 で録画 / 停止',
+  'tt-cam-anim':'カメラパスを定義してアニメーション動画を書き出し',
   'ct-roll':'ロール',
   'ct-roll-level':'水平',
   'tt-walk':'アバター歩行モード（WASD でアバターを移動）',
@@ -16465,6 +16494,9 @@ Object.assign(I18N.en,{
   'lbl-view-rec':'Rec',
   'lbl-view-rec-phone':'Rec',
   'lbl-cam-anim':'Cam Anim',
+  'tt-save-camera':'Save current camera position / angle / focal length / aspect',
+  'tt-view-rec':'Record / stop view as MP4',
+  'tt-cam-anim':'Define a camera path and export an animation',
   'ct-roll':'Roll',
   'ct-roll-level':'Level',
   'tt-walk':'Avatar walk mode (WASD moves the avatar)',
