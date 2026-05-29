@@ -3454,6 +3454,10 @@ Object.defineProperty(window.__dbg, 'camAnimSampleAt', { get: () => (typeof _cam
 // drop / file-pick without needing a real DataTransfer object (Chrome
 // strips synthetic DataTransfer payloads from dispatched DragEvents).
 Object.defineProperty(window.__dbg, 'dispatchFiles', { get: () => (typeof dispatchFiles === 'function') ? dispatchFiles : null });
+// __dbg.camPos / yaw / layers / camera / etc are already defined above.
+// Additional accessors used by the lock-snap-back smoke test:
+Object.defineProperty(window.__dbg, 'selectedLayerId', { get: () => selectedLayerId });
+Object.defineProperty(window.__dbg, 'findLayer', { get: () => (typeof findLayer === 'function') ? findLayer : null });
 // near=0.3: prevents very-close giant splats from swallowing the entire screen
 // (rainbow streak artifact during fast pans in big PortalCam scans).
 // 0.3m ≈ arm's length; below that, splats are clipped before they smear.
@@ -5464,6 +5468,12 @@ window.saveCameraLayer = function(){
       env:    cam.env,
       note:   cam.note,
     };
+    // Fresh saves default to LOCKED so the view that the user just
+    // framed up stays exactly where they put it — accidental WASD /
+    // drag is snapped back to the saved pose each frame. The 🔓 button
+    // on the layer row toggles this off when the user wants to wander
+    // away from the framing without losing the saved values.
+    L.locked = true;
     renderLayerList();
     selectLayer(L.id);
     showUndoToast((window._lang === 'en') ? 'Camera saved' : 'カメラを保存しました');
@@ -5509,6 +5519,38 @@ function _teleportToCameraLayer(L){
   markDirty(8);
 }
 window._teleportToCameraLayer = _teleportToCameraLayer;
+
+// 🔒/🔓 button: flip a camera layer's `locked` flag and re-render the
+// row so the icon + opacity update immediately. When transitioning OFF
+// → ON the saved pose isn't touched; the next frame's snap-back hook
+// just starts holding the live view at the saved values.
+window.toggleCameraLayerLock = function(id){
+  const L = findLayer(id);
+  if(!L || L.type !== 'camera') return;
+  L.locked = !L.locked;
+  renderLayerList();
+  if(typeof showUndoToast === 'function'){
+    showUndoToast(
+      L.locked
+        ? (window._lang === 'en' ? '🔒 Camera locked'   : '🔒 カメラをロックしました')
+        : (window._lang === 'en' ? '🔓 Camera unlocked' : '🔓 ロックを解除しました')
+    );
+  }
+};
+
+// 🎬 button: explicit "go to this camera" — same effect as the
+// existing click-to-teleport selectLayer hook, but reachable from a
+// dedicated button so the user can re-apply the saved pose / framing
+// without having to deselect first (e.g. they unlocked the camera,
+// wandered around, and now want to snap back).
+window.viewCameraLayer = function(id){
+  const L = findLayer(id);
+  if(!L || L.type !== 'camera') return;
+  _teleportToCameraLayer(L);
+  // Also make sure the row is selected so the snap-back hook engages
+  // when the camera is locked.
+  if(selectedLayerId !== L.id) selectLayer(L.id);
+};
 
 // Patch selectLayer to teleport when a camera-type layer is clicked.
 // We wrap the previously-installed window.selectLayer so we don't have
@@ -11384,6 +11426,21 @@ function renderLayerList(){
       :'';
     const renameTip=T('rename-tip');
     const isSel = (window.selectedLayerIds && window.selectedLayerIds.has(L.id)) || selectedLayerId===L.id;
+    // Camera-layer-specific row controls: 🔒/🔓 (lock toggle) + 🎬 (jump
+    // to this camera's saved pose). Lock semantics: when ON, the live
+    // viewport snaps back to the saved pose every frame WHILE this
+    // camera is the selected layer — so accidental WASD / drag input
+    // bounces back. OFF lets the user move freely after teleporting.
+    // 🎬 explicitly re-applies the saved pose + framing without needing
+    // to deselect / re-select the row (useful after wandering with the
+    // camera unlocked).
+    const _camCtl = (L.type === 'camera') ? `
+      <span class="lr-cam-lock" onclick="event.stopPropagation();toggleCameraLayerLock(${L.id})"
+            title="${L.locked ? (window._lang==='en'?'Locked — click to unlock':'ロック中（クリックで解除）') : (window._lang==='en'?'Unlocked — click to lock':'ロック解除（クリックでロック）')}"
+            style="cursor:pointer;opacity:${L.locked?1:.55};margin-right:2px">${L.locked?'🔒':'🔓'}</span>
+      <span class="lr-cam-goto" onclick="event.stopPropagation();viewCameraLayer(${L.id})"
+            title="${window._lang==='en'?'Jump to this camera (load pose + framing)':'このカメラに移動（画角・設定を読込）'}"
+            style="cursor:pointer;margin-right:2px">🎬</span>` : '';
     return `<div class="lr${isSel?' selected':''}${isFolder?' lr-folder':''}"
       style="padding-left:${7+depth*14}px" id="lr-${L.id}" draggable="true"
       onclick="selectLayer(${L.id}, event)"
@@ -11397,6 +11454,7 @@ function renderLayerList(){
       <span class="lr-eye" onclick="event.stopPropagation();setLayerVisible(${L.id},${!L.visible})">${L.visible?'👁':'🚫'}</span>
       <span class="lr-icon" ${isFolder?'ondblclick="event.stopPropagation();openFolderColorPicker('+L.id+',event)" title="'+T('folder-color')+'" style="cursor:pointer;'+_fClr+'"':(L.type==='event'?'ondblclick="event.stopPropagation();openEventColorPicker('+L.id+',event)" title="Change event color" style="cursor:pointer"':'')}>${icon}</span>
       <span class="lr-name" title="${L.name} ［${renameTip}］">${L.name}${badge}</span>
+      ${_camCtl}
       <span class="lr-del" onclick="event.stopPropagation();removeLayer(${L.id})">🗑</span>
     </div>`;
   }).join('');
@@ -14105,6 +14163,24 @@ function animate(now) {
 
   updateCamera();
   updateFlyCamera(dt);
+  // Camera-layer LOCK snap-back. If the currently selected layer is a
+  // camera-type with `locked === true` and we're NOT in the middle of a
+  // cam-anim preview / record (which legitimately drives camPos itself),
+  // pin the live view to the saved pose every frame. This makes the
+  // 🔒 indicator behave: WASD / drag / arrow input nudges _yawTarget /
+  // _pitchTarget normally but on the NEXT frame the live values snap
+  // back, so the camera reads as immovable. Click 🔓 to release.
+  if(selectedLayerId != null
+     && !(typeof camAnim !== 'undefined' && camAnim.playing)){
+    const _selL = findLayer(selectedLayerId);
+    if(_selL && _selL.type === 'camera' && _selL.locked && _selL.savedPose){
+      const sp = _selL.savedPose;
+      if(sp.pos) camPos.set(sp.pos.x, sp.pos.y, sp.pos.z);
+      if(typeof sp.yaw   === 'number'){ yaw   = _yawTarget   = sp.yaw;   }
+      if(typeof sp.pitch === 'number'){ pitch = _pitchTarget = sp.pitch; }
+      if(typeof sp.roll  === 'number'){ roll  = sp.roll;  }
+    }
+  }
   updateCamera();
   // Measurement-marker pulse / scale only matters when the measure tool is
   // active OR a marker is currently visible. Skip the 3-entry iteration
