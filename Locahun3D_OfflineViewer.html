@@ -14176,11 +14176,19 @@ requestAnimationFrame(animate);
 // ══════════════════════════════════════════════════
 
 // Demo .rad (Spark 2.x streaming RAD format, ~357 MB, ~19.8 M splats).
-// Hosted on R2 public-dev URL. NOTE: R2 must be configured to send
-// `Access-Control-Allow-Origin: *` (or echo the viewer origin) for the
-// in-page fetch / Range stream to work. Without CORS the browser blocks
-// the load and the "?demo=1" auto-start silently fails. See the README
-// section "R2 CORS for autoload" for the wrangler / dashboard recipe.
+// Hosted on R2 and served through the `locahun3d-demo` Worker, which adds
+// the `Access-Control-Allow-Origin: *` headers that Cloudflare's public
+// pub-*.r2.dev subdomain doesn't return on its own. Without that
+// passthrough Spark's chunked Range fetches fail with `TypeError: Failed
+// to fetch` from cross-origin viewers and the `?demo=1` auto-start
+// silently shows a black screen. Worker source + deploy instructions are
+// in `demo-proxy/` next to this file.
+//
+// TODO(2026-05): after `wrangler deploy` in demo-proxy/, replace the
+// pub-*.r2.dev URL below with the Worker URL, e.g.
+//   https://locahun3d-demo.<account>.workers.dev/Kousaten_ForDemo_point_cloud.rad
+// (or a custom domain once one is attached). The proxy whitelist also
+// needs the filename — see ALLOWED_PATHS in demo-proxy/src/index.js.
 const DEMO_SCENE_URL = 'https://pub-6fe11fc6301a424ba739695a7c4d2dd9.r2.dev/Kousaten_ForDemo_point_cloud.rad';
 const DEMO_SCENE_LABEL = 'デモシーン(交差点)';
 const DEMO_SCENE_SIZE_MB = 357;

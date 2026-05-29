@@ -1,0 +1,28 @@
+# Cloudflare Worker: locahun3d-demo
+#
+# Tiny pass-through proxy that re-emits the public R2 demo .rad with
+# CORS headers attached. Needed because Cloudflare's pub-*.r2.dev
+# subdomain does NOT return Access-Control-Allow-Origin, so the viewer
+# (served from viewer.locahun3d.com / locahun3d.com / 127.0.0.1 during
+# local development) cannot stream the file via Range requests.
+#
+# Deploy:
+#   cd demo-proxy
+#   npx wrangler deploy
+#
+# After first deploy the Worker is reachable at
+#   https://locahun3d-demo.<your-account>.workers.dev/Kousaten_ForDemo_point_cloud.rad
+# Update DEMO_SCENE_URL in Locahun3D_OfflineViewer.html to that URL.
+#
+# Optionally bind a custom domain (Cloudflare dashboard → Workers & Pages
+# → locahun3d-demo → Settings → Triggers → Custom Domain). The Worker
+# code does NOT depend on the route.
+
+name = "locahun3d-demo"
+main = "src/index.js"
+compatibility_date = "2026-05-29"
+
+# Optional: production route once a custom domain is attached.
+# [[routes]]
+# pattern = "demo.locahun3d.com/*"
+# custom_domain = true
