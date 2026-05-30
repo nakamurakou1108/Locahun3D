@@ -6733,20 +6733,30 @@ window.captureCamShot = async function(){
   // the FOV yields a different zoom than the preview — the capture came out wider
   // than what was framed. oldFov is the exact value on the live camera, so the
   // capture matches the preview's zoom 1:1.
-  camera.aspect = fr.w / Math.max(1e-6, fr.h);
-  camera.fov    = oldFov;
-  camera.updateProjectionMatrix();
-  // Constrain rendering to the frame rect (GL viewport coords are bottom-up).
+  // Re-apply the ENTIRE capture frame setup (pose, aspect, fov, viewport,
+  // scissor) immediately before EVERY render. We render twice with a settle gap
+  // for Spark's sort, and during that await the live animate loop keeps running
+  // (rAF on device, the headless pump in tests) — and it resets camera.aspect to
+  // the full-viewport aspect and the GL viewport to the whole canvas every frame.
+  // If we only set this once up-front, the SECOND render inherited the loop's
+  // full-viewport / 2.0-ish aspect, so the saved JPEG was a WIDER-FOV crop than
+  // the 16:9 preview (near objects shoved toward the edge while far objects barely
+  // moved — the "構図がずれる / 電柱だけ右にずれる" report). Re-pinning everything
+  // before each render makes both renders use the exact frame settings.
   const _yFromBottom = innerHeight - fr.y - fr.h;
-  renderer.setViewport(fr.x, _yFromBottom, fr.w, fr.h);
-  renderer.setScissor(fr.x, _yFromBottom, fr.w, fr.h);
-  renderer.setScissorTest(true);
-  // Render twice with a settle gap; _pinPose() holds the click-time pose so a
-  // still-easing camera lerp can't drift the framing between the two renders.
-  _pinPose();
+  const _applyCapFrame = () => {
+    _pinPose();
+    camera.aspect = fr.w / Math.max(1e-6, fr.h);
+    camera.fov    = oldFov;
+    camera.updateProjectionMatrix();
+    renderer.setViewport(fr.x, _yFromBottom, fr.w, fr.h);
+    renderer.setScissor(fr.x, _yFromBottom, fr.w, fr.h);
+    renderer.setScissorTest(true);
+  };
+  _applyCapFrame();
   renderer.render(scene, camera);
   await new Promise(r2=>setTimeout(r2, 90));
-  _pinPose();
+  _applyCapFrame();   // ← critical: the animate loop ran during the await above
   renderer.render(scene, camera);
   renderer.setScissorTest(false);
 
