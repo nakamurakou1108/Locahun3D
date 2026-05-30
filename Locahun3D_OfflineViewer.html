@@ -6613,6 +6613,39 @@ function _nextCaptureFilename(shotName){
   return n === 1 ? `${base}.jpg` : `${base}_v${n}.jpg`;
 }
 
+// Crop the contiguous empty (near-black) rows off the TOP of a captured frame.
+// Used so a near-level shot doesn't waste vertical space on the black void
+// above the scanned splats when the env sky dome is off. Sampling is cheap (a
+// few dozen columns per row) and STOPS at the first row that has any real
+// content, so it never eats into the scene. Returns the source canvas unchanged
+// when there's nothing to trim (e.g. env-on shots whose top is sky).
+function _camTrimEmptyTop(src){
+  const W = src.width, H = src.height;
+  if(!W || !H) return src;
+  let data;
+  try { data = src.getContext('2d').getImageData(0, 0, W, H).data; }
+  catch(e){ return src; }                 // tainted canvas etc. → skip
+  const COLS = 32, THRESH = 30;           // row empty if every sample sums < THRESH
+  const rowEmpty = (y) => {
+    const base = y * W;
+    for(let i = 0; i < COLS; i++){
+      const x = ((i + 0.5) / COLS * W) | 0;
+      const p = (base + x) * 4;
+      if(data[p] + data[p + 1] + data[p + 2] > THRESH) return false;
+    }
+    return true;
+  };
+  let top = 0;
+  while(top < H && rowEmpty(top)) top++;
+  // Nothing meaningful to trim, or the whole frame is empty → leave untouched.
+  if(top <= 1 || top >= H - 4) return src;
+  const newH = H - top;
+  const out = document.createElement('canvas');
+  out.width = W; out.height = newH;
+  out.getContext('2d').drawImage(src, 0, top, W, newH, 0, 0, W, newH);
+  return out;
+}
+
 // ── Capture: render the scene into an offscreen canvas at full resolution,
 // crop to the sensor aspect, apply WB tint, optionally surround with a metadata
 // border frame (burn-in OUTSIDE the image so nothing covers the shot). ──
@@ -6645,29 +6678,6 @@ window.captureCamShot = async function(){
   hud.style.display = 'none';
   if(info) info.style.display = 'none';
   if(vig)  vig.style.opacity = '0';
-  // When the env sky dome is OFF (hidden), the area above the scanned splats
-  // renders as the black clear colour — so a near-level shot bakes a harsh black
-  // band across the top of the JPEG ("上の余白"). Temporarily show a neutral
-  // overcast sky JUST for the capture so that empty region reads as a clean
-  // light sky instead of black. The live preview keeps its black background
-  // (chosen so splat-sort gaps don't flash grey while editing); we restore the
-  // hidden dome right after the capture render below.
-  let _capTempDome = false;
-  if(typeof env !== 'undefined' && env && env.mesh && !env.mesh.visible){
-    try {
-      const _ep = ENV_PRESETS.overcast;
-      const _u = env.material && env.material.uniforms;
-      if(_ep && _u){
-        _u.uZenith.value.setRGB(_ep.zenith[0],  _ep.zenith[1],  _ep.zenith[2]);
-        _u.uHorizon.value.setRGB(_ep.horizon[0], _ep.horizon[1], _ep.horizon[2]);
-        _u.uGround.value.setRGB(_ep.ground[0],   _ep.ground[1],  _ep.ground[2]);
-        _u.uIntensity.value = _ep.int || 1.0;
-      }
-      env.mesh.position.copy(camPos);
-      env.mesh.visible = true;
-      _capTempDome = true;
-    } catch(_){}
-  }
   // Hide the on-screen canvas so the user doesn't see the brief size change
   canvas.style.visibility = 'hidden';
 
@@ -6701,9 +6711,6 @@ window.captureCamShot = async function(){
   ictx.imageSmoothingEnabled = true;
   ictx.imageSmoothingQuality = 'high';
   ictx.drawImage(canvas, 0, 0, target.w, target.h, 0, 0, target.w, target.h);
-  // The capture render is now baked into `img`; hide the temporary capture-only
-  // sky dome again so the live preview returns to its black background.
-  if(_capTempDome && env && env.mesh) env.mesh.visible = false;
   // ── Environment scene-tint (matches live #env-tint overlay) ──
   // Applied BEFORE WB so the order is "scene lighting first, then camera correction".
   if(env.preset !== 'off' && ENV_PRESETS[env.preset] && ENV_PRESETS[env.preset].sceneTint){
@@ -6735,12 +6742,19 @@ window.captureCamShot = async function(){
   // ── Optionally bake the grid / safe rectangles INTO the captured image ──
   if(cam.includeGrid) _drawGridOnCanvas(ictx, target.w, target.h);
 
+  // Trim the empty (black) void off the TOP of the frame so a near-level shot
+  // doesn't waste the image on the black region above the scanned splats
+  // (per user request: 上の空き部分をトリミングして詰める). Only fires when
+  // there actually is a black void (env "off" / no sky dome); env-on captures
+  // whose top is filled with sky are left at full frame.
+  const imgFinal = _camTrimEmptyTop(img);
+
   // Build final canvas: image alone, OR image + metadata border frame.
   let out;
   if(cam.burnin){
-    out = composeBurnInFrame(img);
+    out = composeBurnInFrame(imgFinal);
   } else {
-    out = img;
+    out = imgFinal;
   }
 
   // Restore live HUD / left info / vignette
