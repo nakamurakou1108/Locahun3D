@@ -11926,6 +11926,18 @@ function renderTransformPanel(){
 }
 
 // ── Add Cube Layer ──
+// Snap a freshly-spawned primitive onto the nearest grid intersection.
+// The scene GridHelper is 200×200 with 1 m cells, so grid lines fall on
+// integer world X/Z — Math.round() picks the closest crossing. We also
+// rest the object on the grid floor (bottom at y≈0) so "place on the grid"
+// reads literally instead of leaving it floating at eye height. restHalf
+// is the object's half-height (0.5 for the unit cube, 0.6 for the sphere).
+function _snapSpawnToGrid(group, restHalf){
+  group.position.x = Math.round(group.position.x);
+  group.position.z = Math.round(group.position.z);
+  group.position.y = restHalf;
+}
+
 window.addCubeLayer = function(posHint){
   const geo=new THREE.BoxGeometry(1,1,1);
   // Use MeshStandardMaterial (PBR) so the cube responds to the scene's
@@ -11950,6 +11962,7 @@ window.addCubeLayer = function(posHint){
     // appears directly in front of the user regardless of yaw / pitch.
     const _fwd = new THREE.Vector3(); camera.getWorldDirection(_fwd);
     group.position.copy(camPos).addScaledVector(_fwd, 1);
+    _snapSpawnToGrid(group, 0.5); // unit cube → half-height 0.5
   }
   const p=group.position;
   const L=addLayer({name:`Cube ${_nextLayerNameNumber('cube')}`,type:'cube',mesh:group,size:{x:1,y:1,z:1}});
@@ -11975,7 +11988,10 @@ window.addSphereLayer = function(posHint){
   wireMesh.visible=false;
   scene.add(wireMesh);
   if(posHint) group.position.copy(posHint);
-  else group.position.set(camPos.x,camPos.y-0.5,camPos.z-2);
+  else {
+    group.position.set(camPos.x,camPos.y-0.5,camPos.z-2);
+    _snapSpawnToGrid(group, 0.6); // sphere radius 0.6
+  }
   const p=group.position;
   const L=addLayer({name:`Sphere ${_nextLayerNameNumber('sphere')}`,type:'sphere',mesh:group,size:{x:1,y:1,z:1}});
   L.cubeColor='#ffb454'; L.cubeOpacity=0.85;
@@ -12512,6 +12528,7 @@ window.addFigureLayer = async function(posHint){
     const _fwd = new THREE.Vector3(); camera.getWorldDirection(_fwd);
     const _spawn = camPos.clone().addScaledVector(_fwd, 1);
     root.position.set(_spawn.x, 0, _spawn.z);
+    _snapSpawnToGrid(root, 0); // figure already stands on the floor (y=0)
   }
   const p = root.position;
   const L = addLayer({name:`Figure ${_nextLayerNameNumber('figure')}`, type:'figure', mesh:root, size:{x:1,y:1,z:1}});
@@ -14760,6 +14777,17 @@ async function loadFromURL(url, displayName){
       mainL._isMain = true;
       mainL._rawExt = 'rad';
       mainL._streamUrl = url;
+      // Demo scene (交差点) ships slightly below the grid floor and a touch
+      // off-axis, so when we autoload it apply the curated transform the
+      // gizmo panel shows (Pos Y 1.5, Rot Y 12°). Gate strictly on the demo
+      // URL/label so user-supplied .rad URLs keep their identity transform.
+      if(typeof DEMO_SCENE_URL !== 'undefined' && (url === DEMO_SCENE_URL || displayName === DEMO_SCENE_LABEL)){
+        mainL.pos   = { x:0, y:1.5, z:0 };
+        mainL.rot   = { x:0, y:12,  z:0 };
+        mainL.scale = { x:1, y:1,   z:1 };
+        if(typeof applyLayerTransform === 'function') applyLayerTransform(mainL.id);
+        if(typeof renderTransformPanel === 'function') renderTransformPanel();
+      }
       _splatActiveUntil = performance.now() + (typeof _SPLAT_ACTIVE_MS === 'number' ? _SPLAT_ACTIVE_MS : 4000);
       if(typeof setBar === 'function') setBar(100);
       if(typeof hideLd === 'function') hideLd();
@@ -16556,6 +16584,7 @@ window.addEventLayer = function(posHint){
     // appears directly in front of the user regardless of yaw / pitch.
     const _fwd = new THREE.Vector3(); camera.getWorldDirection(_fwd);
     group.position.copy(camPos).addScaledVector(_fwd, 1);
+    _snapSpawnToGrid(group, 0.11); // ring r0.45 × scale0.25 ≈ 0.11 above floor
   }
   const p=group.position;
   group.scale.set(0.25,0.25,0.25);
