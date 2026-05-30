@@ -14670,6 +14670,28 @@ function animate(now) {
     try {
       _camViewportRect = _camFrameRect();
       const r = _camViewportRect;
+      // ── Keep the on-screen safe-frame guide (white border + thirds grid)
+      // LOCKED to the rect we actually render into. _camFrameRect() depends on
+      // the live panel layout, which can shift AFTER the tool first laid the
+      // frame out (the camera panel's content/scrollbar settles, the viewport
+      // resizes, etc.). If the cam-frame element + grid stayed at the old rect,
+      // the user composes against a frame that no longer matches what's rendered
+      // — and the capture (which uses this same _camFrameRect) then looks
+      // "shifted / wider" than the grid they framed with. Re-sync cheaply, only
+      // when it has actually moved.
+      const _gf = document.getElementById('cam-frame');
+      if(_gf){
+        const _lx = parseFloat(_gf.style.left) || 0;
+        const _lw = parseFloat(_gf.style.width) || 0;
+        const _lh = parseFloat(_gf.style.height) || 0;
+        if(Math.abs(_lx - r.x) > 0.5 || Math.abs(_lw - r.w) > 0.5 || Math.abs(_lh - r.h) > 0.5){
+          _gf.style.left   = r.x + 'px';
+          _gf.style.top    = r.y + 'px';
+          _gf.style.width  = r.w + 'px';
+          _gf.style.height = r.h + 'px';
+          if(typeof drawCamGrid === 'function'){ try { drawCamGrid(); } catch(_){} }
+        }
+      }
       // Clear the full canvas first so the area outside the safe-frame
       // is solid black instead of stale framebuffer content from the
       // previous, larger render.
