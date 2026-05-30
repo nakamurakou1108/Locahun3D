@@ -6713,40 +6713,49 @@ window.captureCamShot = async function(){
   // Hide the on-screen canvas so the user doesn't see the brief size change
   canvas.style.visibility = 'hidden';
 
-  // Reconfigure renderer + camera for full-resolution capture
-  renderer.setPixelRatio(1);
-  // updateStyle=false → keep CSS size, only the drawingBuffer changes
-  renderer.setSize(target.w, target.h, false);
-  // CRITICAL: the live animate loop leaves the GL viewport/scissor sized to the
-  // on-screen viewport (innerWidth×innerHeight) — and on a phone that's far
-  // SMALLER than the capture target. Without resetting it here, the render only
-  // fills a small rectangle at the GL origin (bottom-left) of the target buffer
-  // and the rest comes out black (the "スマホで写真がおかしい" bug). Force the
-  // viewport + scissor to cover the entire target before rendering.
-  renderer.setScissorTest(false);
-  renderer.setViewport(0, 0, target.w, target.h);
-  renderer.setScissor(0, 0, target.w, target.h);
-  camera.aspect = target.w / target.h;
+  // Render the capture from the LIVE drawing buffer — the SAME size the preview
+  // uses — instead of resizing the renderer to the delivery resolution. Resizing
+  // forced Spark to re-rasterise the splats at a resolution it had NOT settled
+  // at, which shrank their on-screen coverage: 3DGS scenes lost their top/bottom
+  // and the saved JPEG showed black bands the live preview never had (meshes,
+  // having no resolution-dependent rasteriser, were unaffected — which is why
+  // only the demo's splat background broke). We instead render the scene into the
+  // safe-frame sub-rectangle (exactly what the preview shows, where Spark is
+  // already correct) and SCALE that crop to the delivery resolution. Nothing
+  // about the renderer's size / pixel-ratio / Spark state changes, so the capture
+  // is the preview, pixel for pixel.
+  const fr = _camFrameRect();                 // CSS px; aspect === cam.aspect
+  const PR = renderer.getPixelRatio();        // live buffer = CSS px × PR
+  camera.aspect = fr.w / Math.max(1e-6, fr.h);
   camera.fov    = _camSensorVFovDeg();
   camera.updateProjectionMatrix();
-
-  // Render once + wait + render so Spark's async sort is settled at the new size.
-  // _pinPose() before each render overrides any lerp drift that advanced during
-  // the wait, so both renders use the exact click-time pose.
+  // Constrain rendering to the frame rect (GL viewport coords are bottom-up).
+  const _yFromBottom = innerHeight - fr.y - fr.h;
+  renderer.setViewport(fr.x, _yFromBottom, fr.w, fr.h);
+  renderer.setScissor(fr.x, _yFromBottom, fr.w, fr.h);
+  renderer.setScissorTest(true);
+  // Render twice with a settle gap; _pinPose() holds the click-time pose so a
+  // still-easing camera lerp can't drift the framing between the two renders.
   _pinPose();
   renderer.render(scene, camera);
   await new Promise(r2=>setTimeout(r2, 90));
   _pinPose();
   renderer.render(scene, camera);
+  renderer.setScissorTest(false);
 
-  // The drawing buffer now equals the target — copy 1:1 to a 2D canvas for compositing
+  // Crop the frame-rect region out of the live canvas (intrinsic px = CSS × PR)
+  // and scale it to the delivery resolution.
   const img = document.createElement('canvas');
   img.width  = target.w;
   img.height = target.h;
   const ictx = img.getContext('2d');
   ictx.imageSmoothingEnabled = true;
   ictx.imageSmoothingQuality = 'high';
-  ictx.drawImage(canvas, 0, 0, target.w, target.h, 0, 0, target.w, target.h);
+  const _sx = Math.max(0, Math.round(fr.x * PR));
+  const _sy = Math.max(0, Math.round(fr.y * PR));
+  const _sw = Math.round(fr.w * PR);
+  const _sh = Math.round(fr.h * PR);
+  ictx.drawImage(canvas, _sx, _sy, _sw, _sh, 0, 0, target.w, target.h);
   // ── Environment scene-tint (matches live #env-tint overlay) ──
   // Applied BEFORE WB so the order is "scene lighting first, then camera correction".
   if(env.preset !== 'off' && ENV_PRESETS[env.preset] && ENV_PRESETS[env.preset].sceneTint){
