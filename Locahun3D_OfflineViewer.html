@@ -1177,7 +1177,7 @@ body{position:fixed;top:0;left:0;}
        lived in a separate #qpanel opened via the ⚙ 設定 cbar button; that
        button was removed and the controls consolidated into this panel. -->
   <div class="qp-divider"></div>
-  <div class="qp-perf-title">⚙ 設定</div>
+  <div class="qp-perf-title" id="qp-settings-t">⚙ 設定</div>
   <div class="qrow" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0">
     <label id="qp-lbl-grid" style="font-size:.78em;color:#686868">グリッド</label>
     <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
@@ -2806,18 +2806,18 @@ body.ar-active #dz{display:none !important;}
     </button>
     <button class="em-btn" onclick="saveProject();closeExportModal()">
       <span id="em-json">💾 JSONのみ保存 (.json)</span>
-      <span class="em-desc">軽量メタデータ保存（ファイル未キャッシュ分は除外）</span>
+      <span class="em-desc" id="em-json-d">軽量メタデータ保存（ファイル未キャッシュ分は除外）</span>
     </button>
     <hr style="border:none;border-top:1px solid rgba(255,255,255,.07);margin:6px 0">
     <button class="em-btn" onclick="exportGLB();closeExportModal()">
-      📦 GLBエクスポート
-      <span class="em-desc">OBJ/キューブレイヤーを .glb ファイルとして書き出す</span>
+      <span id="em-glb">📦 GLBエクスポート</span>
+      <span class="em-desc" id="em-glb-d">OBJ/キューブレイヤーを .glb ファイルとして書き出す</span>
     </button>
     <button class="em-btn" onclick="exportOBJ();closeExportModal()">
-      📐 OBJエクスポート
-      <span class="em-desc">OBJ/キューブレイヤーを .obj ファイルとして書き出す</span>
+      <span id="em-obj">📐 OBJエクスポート</span>
+      <span class="em-desc" id="em-obj-d">OBJ/キューブレイヤーを .obj ファイルとして書き出す</span>
     </button>
-    <button class="em-close" onclick="closeExportModal()">キャンセル</button>
+    <button class="em-close" id="em-cancel" onclick="closeExportModal()">キャンセル</button>
   </div>
 </div>
 
@@ -3116,7 +3116,7 @@ let _qualPreferred = qualScale;
 // emitted later in the body.
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('qib-lvl');
-  const labels = ['低','中','高'];
+  const labels = [T('qt-low'),T('qt-mid'),T('qt-high')];
   if(el) el.textContent = labels[qualIdx] || '?';
   // Also reflect the auto-selected preset in the in-panel button row.
   document.querySelectorAll('#quality-panel #qbtns button')
@@ -10950,6 +10950,10 @@ const I18N = {
   'qt-low':'低',
   'qt-mid':'中',
   'qt-high':'高',
+  'lbl-help':'使い方',
+  'help-title':'使い方マニュアルを開く',
+  'demo-btn-lbl':'デモシーン(交差点)',
+  'demo-btn-title':'デモ用の 3DGS シーンを Cloudflare R2 から読み込みます',
   'qp-perf-t':'📊 処理能力モニター',
   'qp-lbl-lowpoly-main':'ポリゴン 1/4',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT のみ・自動で再読み込み',
@@ -10976,6 +10980,8 @@ const I18N = {
   'em-zip-load-d':'保存したZIPファイルからプロジェクトを完全復元',
   'em-json':'💾 JSONのみ保存 (.json)',
   'em-recommended':'★推奨',
+  'em-cancel':'キャンセル',
+  'qp-settings-t':'⚙ 設定',
     'qp-quality':'🖥 画質','qp-low':'低','qp-mid':'中','qp-high':'高','qp-ultra':'最高',
     'perf-title':'📊 処理能力モニター','perf-ft':'フレーム時間',
     'perf-gpu':'GPU 負荷','perf-head':'余剰 (ヘッドルーム)',
@@ -11004,7 +11010,7 @@ const I18N = {
     'splat-nocache':'⚠ 3DGSデータが未キャッシュです。ファイルを再読み込みしてください',
     'splat-nolayer':'⚠ エクスポートできる3DGSレイヤーがありません',
     'exp-noobj':'⚠ エクスポートできるオブジェクトがありません','exp-fail':'⚠ エクスポート失敗: ',
-    'budget-ms':'ms  (予算 ','render-res':'レンダ解像度: ',
+    'budget-ms':'ms  (予算 ','render-res':'レンダ解像度: ','perf-budget':'予算',
     'mf-col-tip':'折りたたむ',
   },
   en:{
@@ -11060,6 +11066,10 @@ const I18N = {
   'qt-low':'Low',
   'qt-mid':'Mid',
   'qt-high':'High',
+  'lbl-help':'Help',
+  'help-title':'Open the user manual',
+  'demo-btn-lbl':'Demo Scene (Intersection)',
+  'demo-btn-title':'Load the demo 3DGS scene from Cloudflare R2',
   'qp-perf-t':'📊 Performance Monitor',
   'qp-lbl-lowpoly-main':'Splats 1/4',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT only — auto reload',
@@ -11086,6 +11096,8 @@ const I18N = {
   'em-zip-load-d':'Restore project from a previously saved ZIP',
   'em-json':'💾 Save JSON only (.json)',
   'em-recommended':'★Recommended',
+  'em-cancel':'Cancel',
+  'qp-settings-t':'⚙ Settings',
     'qp-quality':'🖥 Quality','qp-low':'Low','qp-mid':'Med','qp-high':'High','qp-ultra':'Ultra',
     'perf-title':'📊 Performance Monitor','perf-ft':'Frame Time',
     'perf-gpu':'GPU Load','perf-head':'Headroom',
@@ -11114,7 +11126,7 @@ const I18N = {
     'splat-nocache':'⚠ 3DGS data not cached. Please reload file',
     'splat-nolayer':'⚠ No 3DGS layers to export',
     'exp-noobj':'⚠ No objects to export','exp-fail':'⚠ Export failed: ',
-    'budget-ms':'ms  (budget ','render-res':'Render resolution: ',
+    'budget-ms':'ms  (budget ','render-res':'Render resolution: ','perf-budget':'budget',
     'mf-col-tip':'Collapse',
   }
 };
@@ -11137,7 +11149,7 @@ function applyI18n(){
     el.innerHTML=T(k);
   });
   // HUD labels
-  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-recommended','em-h-title','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','lbl-walk','lbl-save-camera','lbl-view-rec','lbl-view-rec-phone','lbl-cam-anim','giz-pt-a','giz-pt-b','giz-pt-c','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
+  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-help','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-json-d','em-glb','em-glb-d','em-obj','em-obj-d','em-cancel','em-recommended','em-h-title','qp-settings-t','qp-lbl-lowpoly-main','qp-lbl-lowpoly-hint','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','lbl-walk','lbl-save-camera','lbl-view-rec','lbl-view-rec-phone','lbl-cam-anim','giz-pt-a','giz-pt-b','giz-pt-c','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.textContent=T(id);
   });
   // HUD info-box edit tooltip + dropzone titles
@@ -11216,6 +11228,15 @@ function applyI18n(){
   // The bulk loop above reset #giz-height-lbl to the static "add" wording;
   // re-apply so it reflects the live height-mode state (add vs remove).
   if(typeof _applyHeightUI==='function' && typeof msr!=='undefined') _applyHeightUI(msr.heightOn);
+  // Quality badge (top-right) — labels are 低/中/高 -> Low/Mid/High.
+  if(typeof _updateQiBadgeLabel==='function' && typeof qualIdx!=='undefined') _updateQiBadgeLabel(qualIdx);
+  // Help button tooltip (title attribute isn't covered by the textContent loop).
+  const _btnHelp=document.getElementById('btnHelp'); if(_btnHelp) _btnHelp.title=T('help-title');
+  // Demo-scene dropzone button: label includes the file size, and the title
+  // attribute needs translating too — neither is handled by the bulk loop.
+  const _demoLbl=document.getElementById('dz-demo-lbl');
+  if(_demoLbl && typeof DEMO_SCENE_SIZE_MB!=='undefined') _demoLbl.textContent=`${T('demo-btn-lbl')} (${DEMO_SCENE_SIZE_MB}MB)`;
+  const _demoBtn=document.getElementById('dz-demo-btn'); if(_demoBtn) _demoBtn.title=T('demo-btn-title');
   // Re-render dynamic UI
   document.getElementById('html-root').lang = L;
   // Refresh update-check button label according to current state
@@ -13498,7 +13519,7 @@ function updatePerfStats(){
   // user can tell at a glance whether the bottleneck is GPU work or
   // somewhere else on the main thread / compositor.
   s('qp-frametime').textContent =
-    renderMs.toFixed(2) + ' ms  (submit '+submitMs.toFixed(2)+' / 予算 '+budget.toFixed(1)+'ms @'+_refreshHz+'Hz)';
+    renderMs.toFixed(2) + ' ms  (submit '+submitMs.toFixed(2)+' / '+T('perf-budget')+' '+budget.toFixed(1)+'ms @'+_refreshHz+'Hz)';
 
   // Mirror live FPS into the always-visible top-right quality badge.
   // The badge's quality-level label is updated in setQuality() separately,
@@ -14840,8 +14861,8 @@ document.addEventListener('DOMContentLoaded', () => {
   btn.className = 'demo-btn';
   btn.setAttribute('style',
     'background:rgba(120,200,255,.16);border-color:rgba(120,200,255,.55);color:#b9e0ff;');
-  btn.innerHTML = `📥 <span>${DEMO_SCENE_LABEL} (${DEMO_SCENE_SIZE_MB}MB)</span>`;
-  btn.title = 'デモ用の 3DGS シーンを Cloudflare R2 から読み込みます';
+  btn.innerHTML = `📥 <span id="dz-demo-lbl">${T('demo-btn-lbl')} (${DEMO_SCENE_SIZE_MB}MB)</span>`;
+  btn.title = T('demo-btn-title');
   btn.addEventListener('click', () => {
     loadFromURL(DEMO_SCENE_URL, DEMO_SCENE_LABEL);
   });
@@ -18007,10 +18028,10 @@ window.toggleQPanel=function(){
 // Sync the top-right always-visible quality badge label to the active
 // preset. Called from setQuality and the undo callback so the badge can
 // never drift out of step with the actual renderer pixel ratio.
-const _QIB_LABELS = ['低','中','高'];
 function _updateQiBadgeLabel(idx){
   const el = document.getElementById('qib-lvl');
-  if(el) el.textContent = _QIB_LABELS[idx] || '?';
+  const labels = [T('qt-low'),T('qt-mid'),T('qt-high')];
+  if(el) el.textContent = labels[idx] || '?';
 }
 window.setQuality=function(scale,idx){
   const before = qualIdx;
