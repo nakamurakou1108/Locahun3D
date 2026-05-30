@@ -6646,6 +6646,15 @@ window.captureCamShot = async function(){
   renderer.setPixelRatio(1);
   // updateStyle=false → keep CSS size, only the drawingBuffer changes
   renderer.setSize(target.w, target.h, false);
+  // CRITICAL: the live animate loop leaves the GL viewport/scissor sized to the
+  // on-screen viewport (innerWidth×innerHeight) — and on a phone that's far
+  // SMALLER than the capture target. Without resetting it here, the render only
+  // fills a small rectangle at the GL origin (bottom-left) of the target buffer
+  // and the rest comes out black (the "スマホで写真がおかしい" bug). Force the
+  // viewport + scissor to cover the entire target before rendering.
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, target.w, target.h);
+  renderer.setScissor(0, 0, target.w, target.h);
   camera.aspect = target.w / target.h;
   camera.fov    = _camSensorVFovDeg();
   camera.updateProjectionMatrix();
@@ -6715,6 +6724,11 @@ window.captureCamShot = async function(){
   const restorePR = Math.min(devicePixelRatio, _PR_CAP) * qualScale;
   renderer.setPixelRatio(restorePR);
   renderer.setSize(innerWidth, innerHeight);
+  // Restore the on-screen viewport/scissor too (the animate loop re-applies it
+  // each frame, but reset here so any render before the next frame is correct).
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, innerWidth, innerHeight);
+  renderer.setScissor(0, 0, innerWidth, innerHeight);
   // Re-show the on-screen canvas
   canvas.style.visibility = canvasVisWas || '';
   // Re-apply live camera math so the safe-frame keeps its sensor-native vertical FOV
