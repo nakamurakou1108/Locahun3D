@@ -1013,6 +1013,38 @@ body{position:fixed;top:0;left:0;}
 </head>
 <body>
 
+<!-- ══ Force-landscape overlay (non-PC only) ══
+     Pure-CSS: shown only on coarse-pointer (phone / tablet) devices held in
+     PORTRAIT. Desktop never matches the media query, and rotating the device
+     to landscape auto-dismisses it (no JS, no touch-coordinate breakage). The
+     app keeps initialising / auto-loading underneath, so it's ready the moment
+     the user rotates. -->
+<style>
+#orient-lock{
+  display:none;
+  position:fixed; inset:0; z-index:2147483646;
+  background:#0a0a0c; color:#e8e8e8;
+  flex-direction:column; align-items:center; justify-content:center;
+  gap:12px; text-align:center; padding:32px;
+  font-family:'Helvetica Neue',Arial,'Hiragino Kaku Gothic ProN','Yu Gothic',Meiryo,sans-serif;
+  -webkit-user-select:none; user-select:none; touch-action:none;
+}
+#orient-lock .ol-icon{ font-size:60px; line-height:1; display:inline-block;
+  animation:ol-rotate 2.4s ease-in-out infinite; }
+#orient-lock .ol-msg{ font-size:1.12em; font-weight:700; letter-spacing:.04em; }
+#orient-lock .ol-sub{ font-size:.82em; color:#9a9aa2; line-height:1.5; }
+@keyframes ol-rotate{ 0%,38%{transform:rotate(0)} 58%,100%{transform:rotate(-90deg)} }
+/* Touch devices in portrait only. */
+@media (orientation: portrait) and (pointer:coarse) and (any-hover:none){
+  #orient-lock{ display:flex; }
+}
+</style>
+<div id="orient-lock" aria-hidden="true">
+  <div class="ol-icon">📱</div>
+  <div class="ol-msg" id="orient-lock-msg">横画面でご利用ください</div>
+  <div class="ol-sub" id="orient-lock-sub">端末を横向きに回転してください</div>
+</div>
+
 
 <!-- ══ Layer Panel ══ -->
 <div id="layer-panel" class="collapsed">
@@ -10978,6 +11010,8 @@ const I18N = {
   'help-title':'使い方マニュアルを開く',
   'demo-btn-lbl':'デモシーン(交差点)',
   'demo-btn-title':'デモ用の 3DGS シーンを Cloudflare R2 から読み込みます',
+  'orient-lock-msg':'横画面でご利用ください',
+  'orient-lock-sub':'端末を横向きに回転してください',
   'qp-perf-t':'📊 処理能力モニター',
   'qp-lbl-lowpoly-main':'ポリゴン 1/4',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT のみ・自動で再読み込み',
@@ -11096,6 +11130,8 @@ const I18N = {
   'help-title':'Open the user manual',
   'demo-btn-lbl':'Demo Scene (Intersection)',
   'demo-btn-title':'Load the demo 3DGS scene from Cloudflare R2',
+  'orient-lock-msg':'Please use in landscape',
+  'orient-lock-sub':'Rotate your device to landscape',
   'qp-perf-t':'📊 Performance Monitor',
   'qp-lbl-lowpoly-main':'Splats 1/4',
   'qp-lbl-lowpoly-hint':'PLY/SPLAT only — auto reload',
@@ -11177,7 +11213,7 @@ function applyI18n(){
     el.innerHTML=T(k);
   });
   // HUD labels
-  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-help','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','fp-btn-import-lbl','fp-btn-export-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-json-d','em-glb','em-glb-d','em-obj','em-obj-d','em-cancel','em-recommended','em-h-title','qp-settings-t','qp-lbl-lowpoly-main','qp-lbl-lowpoly-hint','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','cl-tag-v003','lbl-walk','lbl-save-camera','lbl-view-rec','lbl-view-rec-phone','lbl-cam-anim','giz-pt-a','giz-pt-b','giz-pt-c','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
+  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-minimap','lbl-camtool','lbl-env','lbl-help','orient-lock-msg','orient-lock-sub','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','fp-btn-import-lbl','fp-btn-export-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-json-d','em-glb','em-glb-d','em-obj','em-obj-d','em-cancel','em-recommended','em-h-title','qp-settings-t','qp-lbl-lowpoly-main','qp-lbl-lowpoly-hint','mm-big-title','mm-big-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','cl-tag-v003','lbl-walk','lbl-save-camera','lbl-view-rec','lbl-view-rec-phone','lbl-cam-anim','giz-pt-a','giz-pt-b','giz-pt-c','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','msr-end-lbl-init'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.textContent=T(id);
   });
   // HUD info-box edit tooltip + dropzone titles
