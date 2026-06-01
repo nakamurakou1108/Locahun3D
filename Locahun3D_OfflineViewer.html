@@ -14200,11 +14200,26 @@ function _updateRefreshEstimate(){
 // throttling for no visible benefit on splat scenes. False on desktop:
 // 144 / 165 Hz monitors clear the strict FRAME_MS-1 gate unevenly and
 // would land at 48 fps, which is worse than uncapped native refresh.
-const _fpsCapTouchOnly = (function(){
+let _fpsCapTouchOnly = (function(){
   try {
     return window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
   } catch(_){ return false; }
 })();
+// ── URL override for ProMotion (120 Hz) smoothness testing ──
+// The default 60-fps touch cap saves battery/thermal on heavy splat scenes,
+// but on a 120 Hz iPhone/iPad Pro it makes LIGHT scenes (and fast pans) feel
+// less smooth than the device's native 120 Hz. These flags let us A/B the
+// difference on the real device before changing any default:
+//   ?fpscap=off | 0   → disable the touch cap entirely (run native refresh)
+//   ?fpscap=90 | 120  → cap at a custom fps instead of 60
+// Default unchanged (60) when no flag is present.
+let _touchFpsTarget = TARGET_FPS;
+try {
+  const _capParam = new URLSearchParams(location.search).get('fpscap');
+  if(_capParam === 'off' || _capParam === '0'){ _fpsCapTouchOnly = false; }
+  else if(_capParam && Number(_capParam) > 0){ _touchFpsTarget = Number(_capParam); }
+} catch(_){}
+const _touchFrameMs = 1000 / _touchFpsTarget;
 
 // ══════════════════════════════════════════════════
 //  CSS REPROJECTION  (input → canvas, runs at 60 Hz)
@@ -14422,7 +14437,7 @@ function animate(now) {
   // to skip 2-3 rAFs to clear the gate, landing at ~48 fps. Better to
   // let desktop run free at its native refresh; the GPU on those rigs is
   // never the limiting factor on a single-splat scene.
-  if(_fpsCapTouchOnly && now - _lastFrameTime < FRAME_MS - 1) return;
+  if(_fpsCapTouchOnly && now - _lastFrameTime < _touchFrameMs - 1) return;
   const elapsed = now - _lastFrameTime;
   _lastFrameTime = now;
 
