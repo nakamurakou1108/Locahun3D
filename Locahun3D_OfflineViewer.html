@@ -223,6 +223,14 @@ body{position:fixed;top:0;left:0;}
   text-shadow:none;
 }
 #dz h1 em{font-style:normal;font-weight:900;color:#fff;}
+/* Home-screen brand logo (vector reproduction of the app icon: camera-frame
+   brackets + amber record-ring). Sits above the ロケハン3D wordmark. */
+#dz>.dz-logo{position:relative;z-index:2;line-height:0;margin-bottom:-4px;}
+#dz .dz-logo svg{width:clamp(76px,9vw,104px);height:auto;display:block;
+  filter:drop-shadow(0 6px 18px rgba(0,0,0,.5));}
+@media (pointer:coarse) and (any-hover:none){
+  #dz .dz-logo svg{width:clamp(64px,16vw,92px);}
+}
 #dz .sub{
   font-size:.92em;color:rgba(255,255,255,.5);letter-spacing:.04em;
   font-weight:300;
@@ -2654,6 +2662,17 @@ body.ar-active #dz{display:none !important;}
   <span class="dz-tc tr">2026 / LOCAHUN 3D</span>
   <span class="dz-tc bl">LOCAHUN 3D — LOCATION SCOUT</span>
   <span class="dz-tc br">EST. 2026</span>
+  <div class="dz-logo" aria-hidden="true">
+    <svg viewBox="0 0 100 100" width="100" height="100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ロケハン3D">
+      <defs><linearGradient id="dzlogobg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#17171a"/><stop offset="1" stop-color="#070708"/></linearGradient></defs>
+      <rect x="5" y="5" width="90" height="90" rx="24" fill="url(#dzlogobg)" stroke="#d8b061" stroke-width="1.6" stroke-opacity=".9"/>
+      <g fill="none" stroke="#f3efe6" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M25 36 L25 25 L36 25"/><path d="M75 36 L75 25 L64 25"/>
+        <path d="M25 64 L25 75 L36 75"/><path d="M75 64 L75 75 L64 75"/></g>
+      <circle cx="50" cy="50" r="10.5" fill="#f3a02a"/><circle cx="50" cy="50" r="4.3" fill="#0c0c0d"/>
+    </svg>
+  </div>
   <h1 id="dz-h1">ロケハン3D</h1>
   <p class="sub" id="dz-sub">3D Gaussian Splatting ビューア</p>
   <div class="zone" id="dropzone">
@@ -7076,6 +7095,41 @@ window.salvageCamFromFile = async function(file){
 //       LEFT  = LENS / 画角 / SENSOR
 //       RIGHT = RIG  / ENV  / NOTE / POS / ANGLE
 //   • Each value is explicitly labelled (X/Y/Z, パン/ティルト/ロール) for clarity.
+// Draws the ロケハン3D app-icon mark (camera-frame brackets + amber record-ring)
+// into a 2D context, fitted to an s×s box with top-left at (x,y). Pure canvas
+// paths (no Image/async) so it can run synchronously inside the burn-in
+// compositor and stays crisp at any export resolution. Mirrors the inline SVG
+// used on the home screen so the two brand marks are identical.
+function _drawLocahunLogo(ctx, x, y, s){
+  const u = s / 100;
+  const X = v => x + v * u, Y = v => y + v * u, U = v => v * u;
+  ctx.save();
+  const rr = (px,py,w,h,r)=>{
+    ctx.beginPath();
+    if(ctx.roundRect){ ctx.roundRect(px,py,w,h,r); }
+    else {
+      ctx.moveTo(px+r,py);
+      ctx.arcTo(px+w,py,px+w,py+h,r); ctx.arcTo(px+w,py+h,px,py+h,r);
+      ctx.arcTo(px,py+h,px,py,r);     ctx.arcTo(px,py,px+w,py,r);
+      ctx.closePath();
+    }
+  };
+  const g = ctx.createLinearGradient(0, Y(5), 0, Y(95));
+  g.addColorStop(0, '#17171a'); g.addColorStop(1, '#070708');
+  rr(X(5), Y(5), U(90), U(90), U(24));
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = U(1.6); ctx.strokeStyle = 'rgba(216,176,97,.9)'; ctx.stroke();
+  ctx.strokeStyle = '#f3efe6'; ctx.lineWidth = U(5.4);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const bracket = p => { ctx.beginPath(); ctx.moveTo(X(p[0]),Y(p[1]));
+    ctx.lineTo(X(p[2]),Y(p[3])); ctx.lineTo(X(p[4]),Y(p[5])); ctx.stroke(); };
+  bracket([25,36,25,25,36,25]); bracket([75,36,75,25,64,25]);
+  bracket([25,64,25,75,36,75]); bracket([75,64,75,75,64,75]);
+  ctx.beginPath(); ctx.arc(X(50),Y(50),U(10.5),0,Math.PI*2); ctx.fillStyle='#f3a02a'; ctx.fill();
+  ctx.beginPath(); ctx.arc(X(50),Y(50),U(4.3),0,Math.PI*2);  ctx.fillStyle='#0c0c0d'; ctx.fill();
+  ctx.restore();
+}
+
 function composeBurnInFrame(imgCanvas){
   const W = imgCanvas.width, H = imgCanvas.height;
   const pad     = Math.round(Math.min(W, H) * 0.018);
@@ -7115,10 +7169,19 @@ function composeBurnInFrame(imgCanvas){
     ctx.fillStyle = '#f0f0f0';
     ctx.fillText(cam.shot, sideW + pad, topH / 2);
   }
+  // Brand lockup: app-icon mark + LOCAHUN 3D wordmark, centered in the strip.
   ctx.font = `700 ${Math.round(topFont * 0.92)}px ui-sans-serif,system-ui,sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,180,84,.9)';
-  ctx.fillText('LOCAHUN 3D', finalW / 2, topH / 2);
+  const _brand  = 'LOCAHUN 3D';
+  const _logoS  = Math.round(topH * 0.82);
+  const _logoGp = Math.round(_logoS * 0.30);
+  const _brandW = ctx.measureText(_brand).width;
+  const _lockW  = _logoS + _logoGp + _brandW;
+  const _lockX  = Math.round((finalW - _lockW) / 2);
+  _drawLocahunLogo(ctx, _lockX, Math.round((topH - _logoS) / 2), _logoS);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,180,84,.92)';
+  ctx.fillText(_brand, _lockX + _logoS + _logoGp, topH / 2);
 
   // ── Data ──
   const eq       = _camEquiv35().toFixed(0);
