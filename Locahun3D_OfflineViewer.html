@@ -671,7 +671,11 @@ body{position:fixed;top:0;left:0;}
      px gap; right edge shared with the badge so they line up. */
   position:fixed;top:88px;right:14px;
   background:rgba(26,26,28,.97);border:1px solid rgba(255,255,255,.1);border-radius:10px;
-  padding:12px 16px;z-index:60;min-width:200px;display:none;
+  /* z-index 95 (was 60): at 60 it tied with the top action row / joystick /
+     gizmo (all 60), so on phones the 録画・AR buttons rendered THROUGH the
+     open panel (later-DOM wins a tie). A dropdown must cover the controls
+     beneath it — only true modals (z 6000+) stay above. */
+  padding:12px 16px;z-index:95;min-width:200px;display:none;
   /* The full menu (画質プリセット + 設定 rows + 移動速度 + 処理能力
      モニター + 解像度) is ~480 px tall — taller than phone-landscape's
      usable height. Cap it just under the viewport and scroll internally
@@ -1005,6 +1009,13 @@ body{position:fixed;top:0;left:0;}
   #view-tl-btns{top:30px;gap:3px;padding-top:1px;}
   #view-tl-btns > button,
   #view-tl-btns button{
+    padding:2px 6px !important;font-size:.55em !important;line-height:1.2 !important;
+  }
+  /* Bottom cbar (カメラ / 測定) gets EXACTLY the same metrics as the top
+     action row above, so the two visible button groups on a phone read as
+     one consistent control set (user request: 上のボタンサイズに合わせる). */
+  #hud .cbar{gap:4px;}
+  #hud .cbar > button{
     padding:2px 6px !important;font-size:.55em !important;line-height:1.2 !important;
   }
   #qi-badge{
@@ -1388,6 +1399,12 @@ body{position:fixed;top:0;left:0;}
     <button class="tb-update" id="tb-update-btn" onclick="checkForUpdate(true)"
       title="更新を確認">🔄 <span id="tb-update-lbl">更新確認</span></button>
     <span class="tb-integrity" id="tb-integrity" hidden></span>
+    <!-- Browser fullscreen toggle (phone/tablet). Hidden by default; shown by
+         JS only when the Fullscreen API is actually available (iOS Safari
+         supports it on iPhone from 16.4) AND the device is touch — desktop
+         already has F11. See _initFullscreenButton(). -->
+    <button class="tb-lang" id="tb-fullscreen-btn" onclick="toggleAppFullscreen()"
+      style="display:none" title="全画面表示">⛶</button>
     <button class="tb-lang" id="tb-lang-btn" onclick="toggleLang()">EN</button>
   </div>
 </div>
@@ -3796,6 +3813,52 @@ window.addEventListener('orientationchange', () => {
 if(window.visualViewport){
   window.visualViewport.addEventListener('resize', _doViewportResize);
 }
+
+// ── Browser fullscreen toggle (phone / tablet) ──
+// iOS Safari supports the Fullscreen API on iPhone since 16.4 (webkit-prefixed
+// on documentElement). The topbar ⛶ button is shown only when (a) the API is
+// actually present and (b) the device is touch — desktop already has F11.
+// ?fstest=1 force-shows the button on desktop so the wiring can be verified
+// with a real (trusted) click in Chrome.
+window.toggleAppFullscreen = function(){
+  const d  = document;
+  const el = d.documentElement;
+  const fsEl = d.fullscreenElement || d.webkitFullscreenElement;
+  try {
+    if(fsEl){
+      (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    } else {
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if(req){
+        const p = req.call(el);
+        if(p && p.catch) p.catch(()=>{}); // user-gesture / permission denials are non-fatal
+      }
+    }
+  } catch(_){}
+};
+(function _initFullscreenButton(){
+  const btn = document.getElementById('tb-fullscreen-btn');
+  if(!btn) return;
+  const supported = !!(document.documentElement.requestFullscreen ||
+                       document.documentElement.webkitRequestFullscreen);
+  let touch = false;
+  try { touch = window.matchMedia('(pointer:coarse) and (any-hover:none)').matches; } catch(_){}
+  const force = /[?&]fstest=1/.test(location.search);
+  if(supported && (touch || force)) btn.style.display = 'inline-block';
+  const upd = ()=>{
+    const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    btn.textContent = on ? '⤢' : '⛶';
+    btn.title = on ? '全画面を終了' : '全画面表示';
+    // Fullscreen change resizes the visual viewport; refit the renderer the
+    // same way orientation changes do (iOS commits the new size late).
+    if(typeof _doViewportResize === 'function'){
+      _doViewportResize();
+      setTimeout(_doViewportResize, 250);
+    }
+  };
+  document.addEventListener('fullscreenchange', upd);
+  document.addEventListener('webkitfullscreenchange', upd);
+})();
 
 const grid = new THREE.GridHelper(200, 200, 0x221100, 0x110800);
 grid.position.y = -0.01; grid.visible = false; scene.add(grid);
@@ -7273,10 +7336,16 @@ window.toggleMeasure = function() {
     const hbBottom = helpboxEl ? helpboxEl.getBoundingClientRect().bottom : 0;
     const topPos=Math.max(57, hbBottom + 10);
     gizmoEl.style.top=topPos+'px';
-    gizmoEl.style.maxHeight=(window.innerHeight - topPos - 14)+'px';
     gizmoEl.style.display='block';
     const hintEl=document.getElementById('msr-hint');
     hintEl.style.display='block';
+    // Reserve room for the instruction hint BELOW the panel. Previously the
+    // panel was allowed to fill down to (viewport - 14px); on phone-landscape
+    // heights the hint pinned at panel-bottom + 6 then landed off-screen
+    // (user-reported 下部見切れ). Measure the hint now that it's visible and
+    // subtract it from the panel's height budget.
+    const _hintH = hintEl.offsetHeight || 46;
+    gizmoEl.style.maxHeight = Math.max(120, window.innerHeight - topPos - 14 - _hintH - 6) + 'px';
     const gr=gizmoEl.getBoundingClientRect();
     hintEl.style.top=(gr.bottom+6)+'px';
     hintEl.style.width=gr.width+'px';
@@ -7742,13 +7811,21 @@ function updateOverlay() {
   octx.clearRect(0, 0, overlay.width, overlay.height);
   window._overlayHadContent = overlayWants;
 
-  // Keep msr-hint pinned below gizmo panel
+  // Keep msr-hint pinned below gizmo panel — clamped INSIDE the viewport.
+  // The panel itself reserves room for the hint (see toggleMeasure), but the
+  // panel can grow after open (point C row appears, i18n swap); clamp here so
+  // the hint can never be pushed off the bottom edge, and keep it right-
+  // anchored at the panel's width so it never spreads left over the
+  // joystick / ▲▼ elevation pad.
   if (msr.active) {
     const gizmoEl = document.getElementById('gizmo');
     const hintEl  = document.getElementById('msr-hint');
     const gr = gizmoEl.getBoundingClientRect();
-    hintEl.style.top   = (gr.bottom + 6) + 'px';
+    const hh = hintEl.offsetHeight || 40;
+    const top = Math.min(gr.bottom + 6, window.innerHeight - hh - 8);
+    hintEl.style.top   = Math.max(8, top) + 'px';
     hintEl.style.width = gr.width + 'px';
+    hintEl.style.left  = 'auto';
     hintEl.style.right = '14px';
   }
 
@@ -13865,6 +13942,11 @@ window.toggleQualityPanel=function(){
       panel.style.right  = Math.round(window.innerWidth - br.right) + 'px';
       panel.style.bottom = 'auto';
       panel.style.borderTopRightRadius = '4px';
+      // Cap to the REAL remaining viewport below the live badge position
+      // (the static CSS cap assumes the desktop badge offset; on phones the
+      // badge sits higher and the 100dvh-based cap let the panel run past
+      // the bottom edge, clipping the 移動速度 slider).
+      panel.style.maxHeight = Math.max(160, window.innerHeight - Math.round(br.bottom + 2) - 12) + 'px';
       badge.classList.add('qib-open');
     }
     panel.style.display='block';
@@ -14325,12 +14407,16 @@ const _touchFrameMs = 1000 / _touchFpsTarget;
 //   ?smooth=1 : force enable (e.g. to test on a touchscreen laptop)
 //   ?smooth=0 : force disable
 let _reprojectionEnabled = (function(){
-  if(/[?&]smooth=0/.test(location.search)) return false;
   if(/[?&]smooth=1/.test(location.search)) return true;
-  // Default: touch devices only.
-  try {
-    return window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
-  } catch(_){ return false; }
+  // Default OFF everywhere (was: ON for touch devices). The predict-then-snap
+  // offset is computed from _yawTarget, but the camera LERPS toward that target
+  // over several frames — so the CSS offset overshoots what each render actually
+  // shows and is yanked back every render. The user sees this as the whole view
+  // juddering intermittently ("枠全体がガクっと断続的に動く" on iPhone), the same
+  // ぐわんぐわん that already got it disabled on desktop. It only ever helped when
+  // rAF was throttled to ~11 Hz on heavy iPad scenes; the wobble cost outweighs
+  // that, so it's now opt-in via ?smooth=1.
+  return false;
 })();
 let _lastRenderYaw   = 0;
 let _lastRenderPitch = 0;
