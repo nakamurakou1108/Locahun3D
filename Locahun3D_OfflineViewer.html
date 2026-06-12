@@ -1135,9 +1135,9 @@ body{position:fixed;top:0;left:0;}
      日照モードが内部で利用するため JS 側にそのまま残している（UI だけ撤去）。 -->
 
 <!-- ☀ 日照 (Sun / Daylight) panel -->
-<div id="sun-panel" style="position:fixed;bottom:60px;right:14px;z-index:91;
+<div id="sun-panel" style="position:fixed;bottom:64px;left:50%;transform:translateX(-50%);z-index:91;
   background:rgba(26,26,28,.97);border:1px solid rgba(255,255,255,.1);
-  border-radius:10px;padding:14px;width:286px;max-height:80vh;overflow-y:auto;
+  border-radius:10px;padding:14px;width:286px;max-height:72vh;overflow-y:auto;
   color:#d0d0d0;font-size:.78em;font-family:ui-sans-serif,system-ui,sans-serif;
   backdrop-filter:blur(12px);display:none;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -1219,7 +1219,7 @@ body{position:fixed;top:0;left:0;}
     <span id="sun-l-time" data-i18n="sun-l-time">🕐 時刻</span><span id="sun-time-val" style="color:#fc8">12:00</span>
   </div>
   <div style="position:relative;margin:2px 0 12px">
-    <input type="range" id="sun-time" min="0" max="1439" step="1" value="720"
+    <input type="range" id="sun-time" min="0" max="1430" step="10" value="720"
       oninput="onSunTime(this.value)" style="width:100%;accent-color:#ffd49a;display:block">
     <div id="sun-scrub-marks" style="position:relative;height:8px;margin-top:1px">
       <div id="sun-mark-rise" style="display:none;position:absolute;top:0;width:0;height:0;
@@ -1527,7 +1527,7 @@ body{position:fixed;top:0;left:0;}
       background:linear-gradient(to bottom, rgba(255,180,84,.06), transparent)">
       <div style="display:flex;align-items:baseline;gap:14px">
         <strong style="font-size:1.25em;letter-spacing:.04em" data-i18n-key="manual-title">📖 ロケハン3D ユーザーマニュアル</strong>
-        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.0.3-alpha / 3DGS マルチビューア + プリビズ (αテスト版)</span>
+        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.0.4-alpha / 3DGS マルチビューア + プリビズ (αテスト版)</span>
       </div>
       <button onclick="closeManual()" style="background:transparent;border:1px solid rgba(255,255,255,.12);
         color:#aab;border-radius:6px;padding:6px 12px;font-size:.92em;cursor:pointer;font-family:inherit"
@@ -2824,6 +2824,31 @@ body.ar-active #dz{display:none !important;}
     <div class="dz-changelog-body" id="dz-changelog-body" hidden>
       <div class="cl-entry">
         <div class="cl-entry-head">
+          <span class="cl-ver">v 0.0.4-alpha</span>
+          <span class="cl-date">2026-06-11</span>
+          <span class="cl-tag"><span class="cl-ja">日照・天気</span><span class="cl-en">Sun &amp; Weather</span></span>
+        </div>
+        <ul class="cl-ja">
+          <li>🌞 <b>日照モード</b>を追加: 日付・時刻・都道府県から太陽の位置と日の出 / 南中 / 日の入りを算出し、空とシーン全体の光のムードを疑似HDRIとして再現（朝・昼・夕・夜の明暗と色味、太陽ディスク）</li>
+          <li>🧭 ビュー内に<b>方位コンパス</b>と<b>一日の太陽軌道</b>を3D表示（北はシーンの固定軸）</li>
+          <li>🌤 <b>天気切替（晴れ / 曇り / 雨）</b>を疑似HDRIに連動</li>
+          <li>📅 日付は<b>カレンダー</b>から選択、📍 場所は<b>47都道府県</b>（デフォルト=東京）</li>
+          <li>🕐 時刻スライダーを<b>10分刻み</b>に</li>
+          <li>🗑 手動の「環境」ボタンを廃止し、背景は<b>日照＋天気に一本化</b>（日照OFFでも手動変更まで表示継続、再ONで前回設定を復元）</li>
+          <li>🚗 交差点デモシーンを方角に合わせて表示（Y −168° 回転）</li>
+        </ul>
+        <ul class="cl-en">
+          <li>🌞 Added <b>Sun / Daylight mode</b>: sun position + sunrise / solar-noon / sunset computed from date, time and prefecture; a pseudo-HDRI reproduces the sky and overall lighting mood (morning / day / evening / night, plus the sun disc)</li>
+          <li>🧭 In-view 3D <b>compass</b> + the <b>day's sun-path arc</b> (north = the scene's fixed axis)</li>
+          <li>🌤 <b>Weather toggle (clear / cloudy / rain)</b> linked to the pseudo-HDRI</li>
+          <li>📅 <b>Calendar</b> date picker; 📍 location is one of the <b>47 prefectures</b> (default: Tokyo)</li>
+          <li>🕐 Time slider now steps in <b>10-minute</b> increments</li>
+          <li>🗑 Removed the manual “Environment” button; the background is now driven <b>solely by Sun + Weather</b> (persists when Sun is off until a manual change; prior settings are recalled on re-enable)</li>
+          <li>🚗 Crossroads demo scene now opens aligned to its real bearing (Y −168° yaw)</li>
+        </ul>
+      </div>
+      <div class="cl-entry">
+        <div class="cl-entry-head">
           <span class="cl-ver">v 0.0.3-alpha</span>
           <span class="cl-date">2026-05-30</span>
           <span class="cl-tag" id="cl-tag-v003">プリビズ拡張</span>
@@ -2858,7 +2883,7 @@ body.ar-active #dz{display:none !important;}
     </div>
   </div>
   <div class="dz-version-line">
-    <span id="tb-version">v 0.0.3-alpha</span>
+    <span id="tb-version">v 0.0.4-alpha</span>
   </div>
 </div>
 
@@ -4007,7 +4032,7 @@ const sun = {
   weather: 'clear',             // 'clear' | 'cloudy' | 'rain' — 疑似HDRIに連動
   _vizKey: '',                  // 太陽軌道の再構築判定 (日付/場所が変わったら作り直す)
 };
-(function _sunInitDate(){ const n=new Date(); sun.y=n.getFullYear(); sun.mo=n.getMonth()+1; sun.d=n.getDate(); sun.timeMin=n.getHours()*60+n.getMinutes(); })();
+(function _sunInitDate(){ const n=new Date(); sun.y=n.getFullYear(); sun.mo=n.getMonth()+1; sun.d=n.getDate(); sun.timeMin=Math.min(1430, Math.round((n.getHours()*60+n.getMinutes())/10)*10); })();
 
 // 選択中の現地壁時計時刻 → 絶対 Date(UTC基準) を構築
 function _sunDate(){
@@ -4149,7 +4174,7 @@ function _sunUpdateScrubMarks(times){
   const place=(id,dt)=>{ const el=document.getElementById(id); if(!el) return;
     if(!dt||isNaN(dt.getTime())){ el.style.display='none'; return; }
     const loc=new Date(dt.getTime()+sun.tz*3600000); const min=loc.getUTCHours()*60+loc.getUTCMinutes();
-    el.style.display='block'; el.style.left=(min/1439*100)+'%';
+    el.style.display='block'; el.style.left=(min/1430*100)+'%';
   };
   place('sun-mark-rise', times&&times.sunrise);
   place('sun-mark-set',  times&&times.sunset);
@@ -4163,17 +4188,12 @@ function _sunShowPanel(show){
   if(show) _sunSyncForm();
 }
 window.toggleSunMode = function(){
-  // 日照は「モード」。点灯中は他ツールを使っても照明は維持され、
-  // パネルは単なる操作面（隠れていても点灯は続く）。
+  // 日照は独立トグル。他パネル(カメラ等)を閉じずに開閉でき、同時操作できる。
   if(!sun.active){
-    closeAllPanels();          // 他パネルを閉じてから
-    _setSunActive(true);       // 点灯
-    _sunShowPanel(true);       // 操作パネルを開く
-  } else if(!sun.panelOpen){
-    closeAllPanels();          // 点灯済みだがパネルが隠れている → 再表示
-    _sunShowPanel(true);
+    _setSunActive(true);   // 点灯
+    _sunShowPanel(true);   // 操作パネルを開く
   } else {
-    _sunShowPanel(false);      // 消灯
+    _sunShowPanel(false);  // 消灯
     _setSunActive(false);
   }
 };
@@ -4205,7 +4225,7 @@ window.onSunWeather = function(wx){
 };
 window.sunSetNow = function(){
   const n=new Date(); sun.y=n.getFullYear(); sun.mo=n.getMonth()+1; sun.d=n.getDate();
-  sun.timeMin=n.getHours()*60+n.getMinutes();
+  sun.timeMin=Math.min(1430, Math.round((n.getHours()*60+n.getMinutes())/10)*10);
   _sunSyncForm(); updateSunMode();
 };
 
@@ -5319,12 +5339,8 @@ function closeAllPanels(){
     const _ep = document.getElementById('env-panel'); if(_ep) _ep.style.display = 'none';
     const _eb = document.getElementById('btn-env');   if(_eb) _eb.classList.remove('on');
   }
-  // 日照(Sun)パネル: 他ツールを開いたら隠すだけ（モード=照明は維持）。
-  // 環境プリセットがパネルを閉じても適用され続けるのと同じ挙動。
-  if(typeof sun !== 'undefined' && sun && sun.panelOpen){
-    sun.panelOpen = false;
-    const _sp = document.getElementById('sun-panel'); if(_sp) _sp.style.display = 'none';
-  }
+  // 日照(Sun)パネルは独立。他ツール(特にカメラ)と同時表示・同時操作できるよう、
+  // closeAllPanels では閉じない。日照の開閉は btn-sun トグルのみで制御する。
   // Minimap big-view
   if(typeof _mmUserVisible !== 'undefined' && _mmUserVisible){
     _mmUserVisible = false;
@@ -6467,6 +6483,18 @@ function _setCaptureUIHidden(hide){
     if(hide) _camAnimSetVisualsVisible(false);
     else if(typeof camAnim !== 'undefined' && camAnim.open) _camAnimSetVisualsVisible(true);
   }
+  // 日照モードの3D可視化(方位コンパス + 一日の太陽軌道)。previz補助なので
+  // キャプチャ(撮影/録画)には写り込ませない。空ドーム/太陽ディスク(実ライティング)
+  // は env.mesh 側なので影響しない。
+  if(typeof sunViz !== 'undefined' && sunViz.group){
+    if(hide){
+      if(sunViz.group.userData._capPrevVis === undefined) sunViz.group.userData._capPrevVis = sunViz.group.visible;
+      sunViz.group.visible = false;
+    } else if(sunViz.group.userData._capPrevVis !== undefined){
+      sunViz.group.visible = sunViz.group.userData._capPrevVis;
+      delete sunViz.group.userData._capPrevVis;
+    }
+  }
   if(typeof markDirty === 'function') markDirty(8);
 }
 
@@ -7427,6 +7455,11 @@ window.captureCamShot = async function(){
   if(vig)  vig.style.opacity = '0';
   // Hide the on-screen canvas so the user doesn't see the brief size change
   canvas.style.visibility = 'hidden';
+  // Hide the 日照 3-D overlay (方位コンパス + 太陽軌道) so the previz helper
+  // lines/labels are NOT baked into the captured JPEG. The sky dome + sun disc
+  // (the actual lighting) live on env.mesh and stay visible.
+  const _sunVizWasVisible = (typeof sunViz !== 'undefined' && sunViz.group) ? sunViz.group.visible : null;
+  if(_sunVizWasVisible) sunViz.group.visible = false;
 
   // Render the capture from the LIVE drawing buffer — the SAME size the preview
   // uses — instead of resizing the renderer to the delivery resolution. Resizing
@@ -7539,6 +7572,8 @@ window.captureCamShot = async function(){
   hud.style.display = hudWasShown || 'block';
   if(info) info.style.display = infoWasShown || 'block';
   if(vig) vig.style.opacity = vigOpacity;
+  // Restore the 日照 3-D overlay hidden for the capture renders above.
+  if(_sunVizWasVisible !== null && typeof sunViz !== 'undefined' && sunViz.group) sunViz.group.visible = _sunVizWasVisible;
   // Restore camera intrinsics (aspect, fov) for live preview
   camera.aspect = oldAspect;
   camera.fov    = oldFov;
@@ -15978,7 +16013,7 @@ if(/[?&]showcase=1/.test(location.search)){
       startDrift(bYaw,bPitch,base);
 
       // 1 — intro
-      say('ロケハン3D','オフライン 3DGS ロケハン・ビューア   v0.0.3'); fade(true);
+      say('ロケハン3D','オフライン 3DGS ロケハン・ビューア   v0.0.4'); fade(true);
       await wait(5200); fade(false); await wait(550);
 
       // 2 — camera tool + sensor simulation
@@ -16007,7 +16042,7 @@ if(/[?&]showcase=1/.test(location.search)){
       await flash(); await wait(1100); fade(false); await wait(550);
 
       // 6 — outro
-      say('LOCAHUN 3D','v0.0.3'); fade(true); await wait(3600); fade(false);
+      say('LOCAHUN 3D','v0.0.4'); fade(true); await wait(3600); fade(false);
       await wait(600); stopDrift();
     }
     setTimeout(run, 200);
@@ -18133,7 +18168,7 @@ Object.assign(I18N.ja,{
   'lbl-rot':'角度',
   'tt-edit-dbl':'ダブルクリックで編集',
   'manual-title':'📖 ロケハン3D ユーザーマニュアル',
-  'manual-version':'v 0.0.3-alpha / 3DGS マルチビューア + プリビズ (αテスト版)',
+  'manual-version':'v 0.0.4-alpha / 3DGS マルチビューア + プリビズ (αテスト版)',
   'manual-close':'閉じる ✕',
   'manual-grp-quick':'クイックスタート',
   'manual-grp-basic':'基本操作',
@@ -18396,7 +18431,7 @@ Object.assign(I18N.en,{
   'lbl-rot':'Angle',
   'tt-edit-dbl':'Double-click to edit',
   'manual-title':'📖 LOCAHUN 3D User Manual',
-  'manual-version':'v 0.0.3-alpha / 3DGS multi-viewer + previz (Alpha)',
+  'manual-version':'v 0.0.4-alpha / 3DGS multi-viewer + previz (Alpha)',
   'manual-close':'Close ✕',
   'manual-grp-quick':'QUICK START',
   'manual-grp-basic':'BASICS',
@@ -19624,7 +19659,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.3-alpha';
+const CURRENT_VERSION    = '0.0.4-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
