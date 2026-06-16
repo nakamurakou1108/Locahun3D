@@ -1,6 +1,6 @@
 {
-  "version": "0.0.8-alpha",
+  "version": "0.0.9-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Update button no longer opens GitHub (2026-06). Clicking 「新版あり」 used to open the GitHub releases page (the manifest url failed the github-only origin allowlist and fell back to the repo). Now an online viewer simply reloads in place with a cache-buster to pull the freshest build (Cloudflare serves the latest), and a saved offline (file://) copy downloads the new HTML — neither bounces you out to GitHub. Includes v0.0.5–0.0.7: phone portrait support, mobile/iPad UI overlap fixes, larger tap targets, and 📦 object-add on iPad."
+  "notes": "Phone button layout + fullscreen polish (2026-06). Phone LANDSCAPE: the bottom tool bar (cbar) now sits at the bottom-right corner where the right thumb rests, instead of floating mid-screen, clear of the joystick/arrows. Object-add (📦) is now correctly PHONE-hidden in landscape too (the iPad rules were keyed on width alone, which a wide phone-landscape matched; now gated on the short edge ≥600 = a real tablet). Fullscreen (⛶) button is now PHONE-ONLY: shown on phones, removed from iPad. Fullscreen top-overlap: the top UI is shifted down by the safe-area inset while in fullscreen so it clears the notch (needs on-device confirmation). Note: iPhone Safari does not support page-fullscreen, so the button only appears where fullscreen actually works."
 }

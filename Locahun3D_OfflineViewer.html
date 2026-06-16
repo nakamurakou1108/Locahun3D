@@ -1064,8 +1064,11 @@ body{position:fixed;top:0;left:0;}
      earlier touch rule sets `left:50% !important`, so we must outrank both. */
   #view-tl-btns{ left: calc((100% + var(--lp-width, 0px)) / 2) !important; }
 }
-@media (pointer:coarse) and (any-hover:none) and (min-width:600px){
-  /* iPad / tablet: the シーンレイヤー panel occupies the LEFT edge full-height, so
+@media (pointer:coarse) and (any-hover:none) and (min-width:600px) and (min-height:600px){
+  /* (min-width AND min-height ≥600 = the device's SHORT edge is ≥600 = a tablet,
+     NOT a phone in landscape — a phone landscape is wide (≥600) but short (<600),
+     so gating on width alone wrongly pulled these iPad rules onto phone landscape.)
+     iPad / tablet: the シーンレイヤー panel occupies the LEFT edge full-height, so
      centre the cbar in the canvas area to the RIGHT of it. That single shift
      clears BOTH the panel's right edge AND the ▼ elevation arrow, so no vertical
      lift is needed (phones, where the joystick reaches centre, still lift it via
@@ -1091,6 +1094,27 @@ body{position:fixed;top:0;left:0;}
      to two. Landscape and the 12.9" (1024px) portrait have room for a single row. */
   #view-tl-btns{ flex-wrap:wrap; width:370px; row-gap:5px; }
 }
+@media (pointer:coarse) and (any-hover:none) and (orientation:landscape) and (max-height:500px){
+  /* Phone LANDSCAPE: the bottom band is taken by the joystick (left) + the ▲▼
+     elevation arrows, so the raised, horizontally-centred cbar floated awkwardly
+     mid-screen ("buttons not at the bottom"). The right half of the bottom edge
+     is free, so anchor the cbar to the bottom-RIGHT corner — the tool buttons now
+     sit AT THE BOTTOM where the right thumb rests, clear of the joystick/arrows. */
+  #hud .cbar{ bottom:18px !important; right:18px !important; left:auto !important; transform:none !important; }
+}
+/* Fullscreen top-overlap fix (2026-06): in fullscreen the browser status bar is
+   hidden, so the top UI (topbar / camera action row / perf badge) slides up under
+   the notch on notched phones ("全画面で上がかぶる"). Shift the top cluster down by
+   the device's top safe-area inset so it clears the notch. The inset is 0 on
+   non-notched devices and in normal (non-fullscreen) mode, so nothing else moves.
+   Separate :fullscreen / :-webkit-full-screen rules so an unknown pseudo on one
+   engine doesn't drop the rule for the other. */
+:fullscreen #topbar,
+:fullscreen #view-tl-btns,
+:fullscreen #qi-badge{ margin-top: env(safe-area-inset-top, 0px); }
+:-webkit-full-screen #topbar,
+:-webkit-full-screen #view-tl-btns,
+:-webkit-full-screen #qi-badge{ margin-top: env(safe-area-inset-top, 0px); }
 
 </style>
 </head>
@@ -4582,10 +4606,17 @@ window.toggleAppFullscreen = function(){
   if(!btn) return;
   const supported = !!(document.documentElement.requestFullscreen ||
                        document.documentElement.webkitRequestFullscreen);
+  // Phone-only (user request 2026-06): show the fullscreen toggle on PHONES,
+  // never on iPad/tablet (the iPad already uses the whole screen and the button
+  // just clutters its top bar). A phone's SHORT screen edge is < 600 CSS px; an
+  // iPad's is >= 768. Use a lenient touch test so phones that don't report
+  // (any-hover:none) — e.g. some Android browsers — still qualify.
   let touch = false;
-  try { touch = window.matchMedia('(pointer:coarse) and (any-hover:none)').matches; } catch(_){}
+  try { touch = window.matchMedia('(pointer:coarse)').matches || (navigator.maxTouchPoints||0) > 0; } catch(_){}
+  const shortEdge = Math.min(screen.width||9999, screen.height||9999);
+  const isPhone = touch && shortEdge < 600;
   const force = /[?&]fstest=1/.test(location.search);
-  if(supported && (touch || force)) btn.style.display = 'inline-block';
+  if(supported && (isPhone || force)) btn.style.display = 'inline-block';
   const upd = ()=>{
     const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
     btn.textContent = on ? '⤢' : '⛶';
@@ -19831,7 +19862,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.8-alpha';
+const CURRENT_VERSION    = '0.0.9-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
