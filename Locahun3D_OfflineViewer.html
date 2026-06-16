@@ -11053,7 +11053,29 @@ const _arZAxis = new THREE.Vector3(0, 0, 1);
 
 window.toggleARMode = function(){
   if(arMode.active){ _arExit(); return; }
-  _arEnter().catch(e=>{
+  // iOS 13+: DeviceOrientationEvent.requestPermission() only shows its dialog
+  // when called with a *transient user activation*. Calling it deeper inside the
+  // async _arEnter() — even as that function's first await — can make iOS fail
+  // the activation check and resolve 'denied' WITHOUT ever showing the prompt
+  // (the exact symptom reported: the "permission required" toast appears but no
+  // iOS dialog). So FIRE the request right here, synchronously in the tap
+  // handler, and hand the pending promise to _arEnter(). Also request
+  // DeviceMotionEvent — some iOS builds gate the 'deviceorientation' data stream
+  // behind the motion permission as well.
+  let orientPermP = null;
+  try {
+    if(typeof DeviceOrientationEvent !== 'undefined' &&
+       typeof DeviceOrientationEvent.requestPermission === 'function'){
+      orientPermP = DeviceOrientationEvent.requestPermission();
+    }
+  } catch(_){ orientPermP = null; }
+  try {
+    if(typeof DeviceMotionEvent !== 'undefined' &&
+       typeof DeviceMotionEvent.requestPermission === 'function'){
+      DeviceMotionEvent.requestPermission().catch(()=>{});
+    }
+  } catch(_){}
+  _arEnter(orientPermP).catch(e=>{
     console.error('[AR] enter failed', e);
     if(typeof showUndoToast==='function') showUndoToast(T('ar-permission-denied'));
     _arExit();
@@ -11078,20 +11100,23 @@ const arMode = {
   _onMetadata: null,
 };
 
-async function _arEnter(){
+async function _arEnter(orientPermP){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     showUndoToast(T('ar-unsupported'));
     return;
   }
-  if(typeof DeviceOrientationEvent !== 'undefined' &&
-     typeof DeviceOrientationEvent.requestPermission === 'function'){
-    try {
-      const r = await DeviceOrientationEvent.requestPermission();
-      if(r !== 'granted'){
-        showUndoToast(T('ar-permission-denied'));
-        return;
-      }
-    } catch(_){}
+  // The orientation permission was already requested in the tap handler
+  // (toggleARMode) so iOS sees a valid user gesture; here we just await its
+  // result. Only a hard 'denied' aborts — once denied, iOS never re-prompts, so
+  // point the user at Settings. 'error'/undefined means we couldn't determine it
+  // (e.g. the call threw); continue anyway so the camera passthrough still runs.
+  if(orientPermP){
+    let r = 'granted';
+    try { r = await orientPermP; } catch(_){ r = 'error'; }
+    if(r === 'denied'){
+      showUndoToast(T('ar-perm-motion-denied'));
+      return;
+    }
   }
   // Same minimum cap as V1: 640×360 / 15 fps. In V2 this matters EVEN
   // MORE because texImage2D(HTMLVideoElement) runs every frame to upload
@@ -11118,7 +11143,11 @@ async function _arEnter(){
       });
     } catch(e2){
       console.warn('[AR] getUserMedia retry failed:', e2);
-      showUndoToast(T('ar-permission-denied'));
+      // Distinguish "user/Settings blocked the camera" from other failures so we
+      // can point them at the right place. NotAllowedError / SecurityError =
+      // permission; once blocked in Settings iOS won't re-prompt.
+      const denied = e2 && (e2.name === 'NotAllowedError' || e2.name === 'SecurityError');
+      showUndoToast(T(denied ? 'ar-perm-camera-denied' : 'ar-permission-denied'));
       return;
     }
   }
@@ -18398,6 +18427,8 @@ Object.assign(I18N.ja,{
   'ar-off':'AR モードを終了しました',
   'ar-unsupported':'⚠ この端末では AR モードが利用できません',
   'ar-permission-denied':'⚠ カメラ / モーションセンサの許可が必要です',
+  'ar-perm-motion-denied':'⚠ モーションセンサが拒否されています。設定 > Safari > モーションと画面の向きのアクセス をオンにして再読み込みしてください',
+  'ar-perm-camera-denied':'⚠ カメラが拒否されています。設定 > Safari > カメラ を「許可」にして再読み込みしてください',
   'giz-pt-a':'点 A',
   'giz-pt-b':'点 B',
   'giz-pt-c':'点 C',
@@ -18661,6 +18692,8 @@ Object.assign(I18N.en,{
   'ar-off':'AR mode ended',
   'ar-unsupported':'⚠ This device does not support AR mode',
   'ar-permission-denied':'⚠ Camera / motion sensor permission required',
+  'ar-perm-motion-denied':'⚠ Motion sensor is blocked. Enable Settings > Safari > Motion & Orientation Access, then reload',
+  'ar-perm-camera-denied':'⚠ Camera is blocked. Set Settings > Safari > Camera to Allow, then reload',
   'giz-pt-a':'Point A',
   'giz-pt-b':'Point B',
   'giz-pt-c':'Point C',
@@ -19954,7 +19987,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.14-alpha';
+const CURRENT_VERSION    = '0.0.15-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 

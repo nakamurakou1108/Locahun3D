@@ -1,6 +1,6 @@
 {
-  "version": "0.0.14-alpha",
+  "version": "0.0.15-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Phone: remove the DUPLICATE 録画 (record) button (2026-06). Phones were showing two identical 録画 buttons — one in the bottom cbar (#btnViewRec, kept there since the 日照/録画 phone-cbar change) and a second mirror in the top camera row (#btnViewRecPhone). The top mirror predates the cbar carrying 録画 on phones and was never removed. Now #btnViewRecPhone is kept hidden on every tier, so the single 録画 lives in the cbar (📷カメラ / ☀日照 / 📐測定 / ⏺録画) with the other view tools. The top phone row is now just 🏠リセット / 📱AR (+ 画質 badge). Builds on v0.0.13."
+  "notes": "AR permission fix for iPhone (2026-06). Symptom: tapping AR on iPhone showed the 'permission required' toast but NO iOS dialog. Cause: DeviceOrientationEvent.requestPermission() was called inside the async _arEnter() — even as its first await, iOS can fail the transient-activation (user-gesture) check there and silently resolve 'denied'. Fix: requestPermission() is now fired SYNCHRONOUSLY in the tap handler (toggleARMode), and the pending promise is handed to _arEnter(); verified the call happens synchronously within the gesture. Also request DeviceMotionEvent.requestPermission() (some iOS gate orientation data behind it). On a hard denial the toast now points to the exact iOS setting (motion: Settings>Safari>Motion & Orientation Access; camera: Settings>Safari>Camera) since iOS never re-prompts once blocked. Builds on v0.0.14."
 }
