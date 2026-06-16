@@ -728,6 +728,16 @@ body{position:fixed;top:0;left:0;}
 @media (pointer:coarse) and (any-hover:none){
   #qi-badge{ padding:5px 11px; font-size:.74em; }
 }
+/* When JS moves the badge into the camera action row (see _qiBadgeIntoActionRow)
+   it flows inline at the row's RIGHT END rather than being pinned to the corner.
+   This applies on every device. */
+#view-tl-btns > #qi-badge{ position:static; top:auto; right:auto; align-self:center; }
+@media (pointer:coarse) and (any-hover:none) and (max-width:600px) and (orientation:portrait){
+  /* Phone PORTRAIT only: the 4-button camera row already fills the width, so there
+     is no room for the badge inline — keep it pinned at the top-right corner here.
+     (Phone landscape, iPad and desktop have room and show it at the row's right end.) */
+  #view-tl-btns > #qi-badge{ position:fixed; top:30px; right:6px; align-self:auto; }
+}
 #quality-panel .qt{color:#C0C0C0;font-size:.85em;font-weight:600;margin-bottom:10px;}
 #quality-panel .qp-divider{
   border-top:1px solid rgba(255,255,255,.07);margin:10px 0 8px;
@@ -938,7 +948,7 @@ body{position:fixed;top:0;left:0;}
      iPhone as on desktop. アバター歩行 stays visible because it's the
      only entry point for walk mode and it works fine via touch. */
   #hud .ibox{display:none !important;}
-  #view-tl-btns > div{display:none !important;}  /* オブジェクト追加 wrapper */
+  #view-tl-btns > div:not(#qi-badge){display:none !important;}  /* オブジェクト追加 wrapper (but not the 画質 badge, which now lives in this row) */
   #btnAddFigureTop{display:none !important;}
   /* On touch devices the only visible child of #view-tl-btns is the
      アバター歩行 button. Re-anchor the container to the horizontal centre
@@ -1078,7 +1088,7 @@ body{position:fixed;top:0;left:0;}
      useful, so bring back the 📦 オブジェクト追加 dropdown (Cube / Event /
      Figure) that the generic touch block hides. Phones (<600px) stay without
      it — the top row is already tight there. */
-  #view-tl-btns > div{ display:inline-block !important; }
+  #view-tl-btns > div:not(#qi-badge){ display:inline-block !important; }
   /* When the layer panel is EXPANDED, hide the joystick + ▲▼ arrows: the user is
      editing layers (incl. the figure bone sliders that sit at the panel's bottom,
      which the joystick would otherwise cover) rather than flying the camera. The
@@ -1092,7 +1102,7 @@ body{position:fixed;top:0;left:0;}
      (🏠 / 📦オブジェクト追加 / 🎥 / 🎞 / 📱AR) and is centred in the canvas area to
      the RIGHT of the layer panel, which is too narrow for one row here — wrap it
      to two. Landscape and the 12.9" (1024px) portrait have room for a single row. */
-  #view-tl-btns{ flex-wrap:wrap; width:370px; row-gap:5px; }
+  #view-tl-btns{ flex-wrap:wrap; width: min(510px, calc(100% - var(--lp-width, 0px) - 24px)); row-gap:5px; }
 }
 @media (pointer:coarse) and (any-hover:none) and (orientation:landscape) and (max-height:500px){
   /* Phone LANDSCAPE: the bottom band is taken by the joystick (left) + the ▲▼
@@ -4630,6 +4640,16 @@ window.toggleAppFullscreen = function(){
   };
   document.addEventListener('fullscreenchange', upd);
   document.addEventListener('webkitfullscreenchange', upd);
+})();
+// Move the 画質 / perf badge to the RIGHT END of the camera action row so the top
+// controls read as one cohesive group instead of a separate floating chip in the
+// corner (user request 2026-06). It becomes the last flex child of #view-tl-btns;
+// CSS below (`#view-tl-btns > #qi-badge`) drops its fixed positioning so it flows
+// inline. The #quality-panel still anchors under it (its JS reads the live rect).
+(function _qiBadgeIntoActionRow(){
+  const badge = document.getElementById('qi-badge');
+  const row   = document.getElementById('view-tl-btns');
+  if(badge && row) row.appendChild(badge);
 })();
 
 const grid = new THREE.GridHelper(200, 200, 0x221100, 0x110800);
@@ -19862,7 +19882,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.9-alpha';
+const CURRENT_VERSION    = '0.0.10-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 

@@ -1,6 +1,6 @@
 {
-  "version": "0.0.9-alpha",
+  "version": "0.0.10-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Phone button layout + fullscreen polish (2026-06). Phone LANDSCAPE: the bottom tool bar (cbar) now sits at the bottom-right corner where the right thumb rests, instead of floating mid-screen, clear of the joystick/arrows. Object-add (📦) is now correctly PHONE-hidden in landscape too (the iPad rules were keyed on width alone, which a wide phone-landscape matched; now gated on the short edge ≥600 = a real tablet). Fullscreen (⛶) button is now PHONE-ONLY: shown on phones, removed from iPad. Fullscreen top-overlap: the top UI is shifted down by the safe-area inset while in fullscreen so it clears the notch (needs on-device confirmation). Note: iPhone Safari does not support page-fullscreen, so the button only appears where fullscreen actually works."
+  "notes": "Quality/画質 badge moved into the camera action row (2026-06). The 🖥 perf/quality chip used to float alone in the top-right corner; it now sits at the RIGHT END of the camera button row (🏠リセット…AR 画質) so the top controls read as one group, on every device. Desktop / iPad-landscape / phone-landscape show it inline at the row's right end; iPad portrait wraps the row to two rows (width adapts to iPad mini vs Pro); phone portrait keeps it just under the row's right end (no inline room). The 画質 dropdown still anchors under it. Builds on v0.0.9 phone/fullscreen polish."
 }
