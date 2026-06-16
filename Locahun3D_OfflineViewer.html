@@ -727,7 +727,13 @@ body{position:fixed;top:0;left:0;}
   transition:background .15s,border-color .15s;
   letter-spacing:.02em;line-height:1.2;
   user-select:none;
+  /* It's a <button> now — strip the native control chrome so it looks exactly
+     like the old <div>, and make sure no tap on it (or its child spans) can
+     trigger an iOS double-tap zoom of the toolbar. */
+  appearance:none;-webkit-appearance:none;margin:0;
+  touch-action:manipulation;
 }
+#qi-badge *{ touch-action:manipulation; }
 #qi-badge:hover{
   background:rgba(255,255,255,.08);
   border-color:rgba(255,255,255,.25);
@@ -3099,11 +3105,16 @@ body.ar-active #dz{display:none !important;}
      the quality preset and also tweak grid / FOV / move speed. The badge
      itself shows the CURRENT quality label + live FPS so the user always
      sees "this is the quality I'm getting right now" at a glance. -->
-<div id="qi-badge" onclick="toggleQualityPanel()" title="画質と設定">
+<!-- A real <button> (not a <div>): on iOS a generic <div onclick> is a
+     double-tap-zoom target and touch-action doesn't reach its child <span>s, so
+     tapping the 画質 chip used to zoom the whole top button row ("他のボタンが拡大").
+     Native <button>s don't double-tap-zoom and give a clean immediate tap — same
+     as every other control in this row. type="button" avoids any form submit. -->
+<button type="button" id="qi-badge" onclick="toggleQualityPanel()" title="画質と設定">
   <span class="qib-icon">🖥</span>
   <span id="qib-lvl" class="qib-lvl">高</span>
   <span id="qib-fps" class="qib-fps">— fps</span>
-</div>
+</button>
 
 <!-- Gizmo / Measure panel -->
 <div id="gizmo">
@@ -20190,7 +20201,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.17-alpha';
+const CURRENT_VERSION    = '0.0.18-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
