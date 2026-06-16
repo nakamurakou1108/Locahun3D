@@ -1,6 +1,6 @@
 {
-  "version": "0.0.13-alpha",
+  "version": "0.0.14-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Phone LANDSCAPE bottom tool bar (cbar) centring (2026-06). The cbar was anchored to the bottom-right corner; it now sits horizontally centred in the free space between the joystick + ▲▼ arrow group (left) and the right edge — same treatment the iPad already got (user request 「ジョイスティックと右端の間の左右中央」). Verified at 844×390: cbar centre x=570 (= (296+W)/2), clears the joystick group (right≈278) by 155px, no right overflow for any landscape phone ≥570px wide. bottom:24 keeps it on the shared baseline with the joystick. Builds on v0.0.12."
+  "notes": "Phone: remove the DUPLICATE 録画 (record) button (2026-06). Phones were showing two identical 録画 buttons — one in the bottom cbar (#btnViewRec, kept there since the 日照/録画 phone-cbar change) and a second mirror in the top camera row (#btnViewRecPhone). The top mirror predates the cbar carrying 録画 on phones and was never removed. Now #btnViewRecPhone is kept hidden on every tier, so the single 録画 lives in the cbar (📷カメラ / ☀日照 / 📐測定 / ⏺録画) with the other view tools. The top phone row is now just 🏠リセット / 📱AR (+ 画質 badge). Builds on v0.0.13."
 }

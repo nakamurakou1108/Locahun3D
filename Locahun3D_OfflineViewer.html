@@ -8932,15 +8932,15 @@ function showHUD() {
   };
   _phoneHide('btnSaveCamera', _isPhoneTier);
   _phoneHide('btnCamAnim',    _isPhoneTier);
-  // #btnViewRec lives in the cbar now — the cbar's smartphone media
-  // query already collapses non-{Measure,Cam} buttons on phones, so we
-  // intentionally don't apply the JS-tier hide here. Phones still get
-  // their own #btnViewRecPhone mirror in the top-right toolbar.
-  // Phone-only mirror of the rec button — visible ONLY on phones, lives
-  // inside #view-tl-btns next to btnAR (which is already phone-/tablet-
-  // visible via the (pointer:coarse) media query).
+  // #btnViewRec lives in the cbar now and the cbar's smartphone media query
+  // KEEPS it (📷カメラ / ☀日照 / 📐測定 / ⏺録画) on phones, so phones already have
+  // a 録画 button down there. The old top-row #btnViewRecPhone mirror therefore
+  // became a SECOND identical 録画 button on phones (user noticed "録画ボタンが
+  // ふたつある"). De-duplicated 2026-06: keep the top mirror hidden everywhere —
+  // the cbar 録画 is the single source. (#btnViewRecPhone stays in the DOM so the
+  // recording-state label loop / tooltip refs don't need touching.)
   const _btnViewRecPhone = document.getElementById('btnViewRecPhone');
-  if(_btnViewRecPhone) _btnViewRecPhone.style.display = _isPhoneTier ? 'inline-block' : 'none';
+  if(_btnViewRecPhone) _btnViewRecPhone.style.display = 'none';
   requestMinimapUpdate();
 }
 let _hideDzTimer=null;
@@ -19954,7 +19954,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.13-alpha';
+const CURRENT_VERSION    = '0.0.14-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
