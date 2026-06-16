@@ -1,6 +1,6 @@
 {
-  "version": "0.0.7-alpha",
+  "version": "0.0.8-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Object-add on iPad (2026-06). The 📦 オブジェクト追加 dropdown (Cube / Event / Figure) is now available on iPad — it was hidden on all touch devices. On iPad portrait (≤834px) the camera action row now wraps to two rows so the extra button fits cleanly to the right of the シーンレイヤー panel; landscape (and 12.9\" portrait) keep one row. Phones are unchanged (the row is too tight there). Verified zero overlap/overflow with the dropdown shown and open, iPad portrait + landscape. Builds on v0.0.5/0.0.6 mobile & iPad UI fixes."
+  "notes": "Update button no longer opens GitHub (2026-06). Clicking 「新版あり」 used to open the GitHub releases page (the manifest url failed the github-only origin allowlist and fell back to the repo). Now an online viewer simply reloads in place with a cache-buster to pull the freshest build (Cloudflare serves the latest), and a saved offline (file://) copy downloads the new HTML — neither bounces you out to GitHub. Includes v0.0.5–0.0.7: phone portrait support, mobile/iPad UI overlap fixes, larger tap targets, and 📦 object-add on iPad."
 }

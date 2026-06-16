@@ -19831,7 +19831,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.7-alpha';
+const CURRENT_VERSION    = '0.0.8-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
@@ -20161,13 +20161,24 @@ window.checkForUpdate = async function(userInitiated){
   // notes / sha hash). Download is best-effort; release page open is the
   // reliable fallback.
   if(_updateState.status === 'available'){
-    // Only follow data.url if it passed origin validation; else fall back.
-    const target = _updateState.urlTrusted ? _updateState.url : RELEASES_FALLBACK_URL;
     if(userInitiated){
-      // Fire HTML download first (so the user gets the file even if they
-      // then dismiss the release page). Don't block on its result.
-      _downloadLatestViewerHtml(_updateState.urlTrusted ? _updateState.url : null);
-      if(target) window.open(target, '_blank', 'noopener,noreferrer');
+      // Get the new version IN PLACE — never bounce the user out to GitHub
+      // (user feedback 2026-06: clicking "新版あり" should not open the repo).
+      if(location.protocol === 'https:' || location.protocol === 'http:'){
+        // Online viewer (e.g. viewer.locahun3d.com): the freshest HTML is one
+        // reload away — Cloudflare serves the latest — so just reload in place.
+        // Use a cache-buster so a stale browser cache can't re-serve the old
+        // build (otherwise the click would appear to do nothing).
+        try{
+          const u = new URL(location.href);
+          u.searchParams.set('_v', String(Date.now()));
+          location.replace(u.toString());
+        }catch(_){ location.reload(); }
+      } else {
+        // Saved offline copy (file://): can't reload to a newer one, so download
+        // the fresh viewer HTML so the user can replace their local file.
+        _downloadLatestViewerHtml(_updateState.urlTrusted ? _updateState.url : null);
+      }
     }
     return;
   }
