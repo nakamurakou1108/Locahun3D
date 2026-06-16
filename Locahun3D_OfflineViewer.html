@@ -31,8 +31,23 @@ html,body{
   -webkit-touch-callout:none;
   -webkit-user-select:none;
   user-select:none;
+  /* Stop iOS Safari from auto-inflating UI text (and therefore button sizes)
+     when it decides the layout is "narrow" — keeps the toolbars at the size we
+     set on every device. */
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
 }
 body{position:fixed;top:0;left:0;}
+/* iPad/iPhone fix (2026-06): touch-action:manipulation on the document root does
+   NOT reliably propagate the "no double-tap-zoom" behaviour to individual buttons
+   in iOS Safari — a touch that STARTS on a button uses the button's own (auto)
+   touch-action, so repeatedly tapping a top toolbar button could trigger a
+   double-tap zoom (the button row appeared to enlarge and shift up). Set it on
+   the interactive UI buttons themselves so taps never zoom. */
+#view-tl-btns button,
+#hud .cbar button,
+#topbar button,
+#immersive-exit{ touch-action:manipulation; }
 #c{
   display:block;width:100vw;height:100vh;touch-action:none;
   /* will-change:transform promotes the canvas to its own compositor layer
@@ -733,12 +748,13 @@ body{position:fixed;top:0;left:0;}
    This applies on every device. */
 #view-tl-btns > #qi-badge{ position:static; top:auto; right:auto; align-self:center; }
 @media (pointer:coarse) and (any-hover:none) and (max-width:600px) and (orientation:portrait){
-  /* Phone PORTRAIT only: the 4-button camera row already fills the width, so there
-     is no room for the badge inline — keep it pinned at the top-right corner here.
-     (Phone landscape, iPad and desktop have room and show it at the row's right end.)
-     right:0 so the badge's right edge lines up with the camera row's right edge
-     (it hangs neatly under the AR button) instead of sitting 6px short of it. */
-  #view-tl-btns > #qi-badge{ position:fixed; top:30px; right:0px; align-self:auto; }
+  /* Phone PORTRAIT: keep the whole top group on ONE line (user request 2026-06
+     "縦画面の上UIを一列に"). On phones only 3 buttons survive (🏠リセット / ⏺録画 /
+     📱AR — 位置保存・アニメ・歩行・オブジェクト追加 are hidden), so the 🖥 badge now
+     fits INLINE at the row's right end instead of being pinned on a 2nd line.
+     Tighten the row gap a touch so reset/record/AR + badge clear ~360px widths. */
+  #view-tl-btns{ gap:4px !important; }
+  #view-tl-btns > #qi-badge{ position:static !important; top:auto; right:auto; align-self:center !important; }
 }
 #quality-panel .qt{color:#C0C0C0;font-size:.85em;font-weight:600;margin-bottom:10px;}
 #quality-panel .qp-divider{
@@ -1080,12 +1096,16 @@ body{position:fixed;top:0;left:0;}
   /* (min-width AND min-height ≥600 = the device's SHORT edge is ≥600 = a tablet,
      NOT a phone in landscape — a phone landscape is wide (≥600) but short (<600),
      so gating on width alone wrongly pulled these iPad rules onto phone landscape.)
-     iPad / tablet: the シーンレイヤー panel occupies the LEFT edge full-height, so
-     centre the cbar in the canvas area to the RIGHT of it. That single shift
-     clears BOTH the panel's right edge AND the ▼ elevation arrow, so no vertical
-     lift is needed (phones, where the joystick reaches centre, still lift it via
-     the smartphone block above). */
-  #hud .cbar{ left: calc((100% + var(--lp-width, 0px)) / 2) !important; }
+     iPad / tablet: centre the cbar in the free space between the LEFT-hand
+     controls and the right edge (user request 2026-06: "ジョイスティックと右端の
+     間の左右中央"). The left boundary is whichever reaches further right:
+       • the シーンレイヤー panel (var(--lp-width)) when it's expanded, or
+       • the joystick + ▲▼ arrow group (≈296px from the left) when it's collapsed
+         and the joystick is showing.
+     max() of the two keeps the cbar centred in the genuinely-empty area and
+     clears BOTH at once. (Phones, where the joystick reaches centre, still lift
+     the cbar above it via the smartphone block above.) */
+  #hud .cbar{ left: calc((100% + max(var(--lp-width, 0px), 296px)) / 2) !important; }
   /* iPad has the room (and the シーンレイヤー panel) to make adding objects
      useful, so bring back the 📦 オブジェクト追加 dropdown (Cube / Event /
      Figure) that the generic touch block hides. Phones (<600px) stay without
@@ -1136,6 +1156,29 @@ body{position:fixed;top:0;left:0;}
 :-webkit-full-screen #topbar,
 :-webkit-full-screen #view-tl-btns,
 :-webkit-full-screen #qi-badge{ margin-top: env(safe-area-inset-top, 0px); }
+
+/* ── Simple "fullscreen" for phones (2026-06) ──
+   iPhone Safari has NO Fullscreen API (only iPad/Android do), so the ⛶ button
+   can't request a true OS fullscreen there. Instead it toggles body.immersive,
+   which HIDES the viewer's own top chrome (topbar / camera action row / badge)
+   to maximise the 3D view — the Safari address bar itself can't be removed, but
+   the app's own UI gets out of the way. The bottom nav (joystick / ▲▼ / cbar)
+   stays so the user can still fly the camera, and a small floating ⤢ button
+   appears to leave the mode. (Phone-only: the ⛶ button is shown on phones only,
+   so iPad never enters this.) */
+body.immersive #topbar,
+body.immersive #view-tl-btns,
+body.immersive #qi-badge{ display:none !important; }
+#immersive-exit{
+  display:none; position:fixed; z-index:90;
+  top: calc(8px + env(safe-area-inset-top, 0px)); right: 10px;
+  background:rgba(20,20,22,.62); border:1px solid rgba(255,255,255,.22);
+  color:rgba(225,225,225,.92); border-radius:8px; padding:7px 11px;
+  font-size:14px; line-height:1; cursor:pointer; pointer-events:all;
+  -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px);
+  letter-spacing:.03em;
+}
+body.immersive #immersive-exit{ display:inline-block; }
 
 </style>
 </head>
@@ -1617,6 +1660,11 @@ body{position:fixed;top:0;left:0;}
     <button class="tb-lang" id="tb-lang-btn" onclick="toggleLang()">EN</button>
   </div>
 </div>
+
+<!-- Floating "leave simple-fullscreen" button. Hidden unless body.immersive
+     (phone-only mode); sits at the top-right where the topbar used to be so the
+     user can always get the UI back. See toggleAppFullscreen(). -->
+<button id="immersive-exit" onclick="toggleAppFullscreen()" title="全画面表示を終了">⤢ 表示</button>
 
 <canvas id="overlay"></canvas>
 <canvas id="c"></canvas>
@@ -4609,35 +4657,49 @@ if(window.visualViewport){
 window.toggleAppFullscreen = function(){
   const d  = document;
   const el = d.documentElement;
-  const fsEl = d.fullscreenElement || d.webkitFullscreenElement;
+  // Primary mechanism = CSS "immersive" mode (hide the viewer's own top chrome).
+  // This is what actually maximises the view on iPhone, which has no Fullscreen
+  // API. We ALSO drive the real Fullscreen API where it exists (iPad / Android
+  // Chrome) so those get true OS fullscreen on top of the immersive layout.
+  const goImmersive = !d.body.classList.contains('immersive');
+  d.body.classList.toggle('immersive', goImmersive);
   try {
-    if(fsEl){
-      (d.exitFullscreen || d.webkitExitFullscreen).call(d);
-    } else {
+    const fsEl = d.fullscreenElement || d.webkitFullscreenElement;
+    if(goImmersive && !fsEl){
       const req = el.requestFullscreen || el.webkitRequestFullscreen;
       if(req){
         const p = req.call(el);
         if(p && p.catch) p.catch(()=>{}); // user-gesture / permission denials are non-fatal
       }
+    } else if(!goImmersive && fsEl){
+      (d.exitFullscreen || d.webkitExitFullscreen).call(d);
     }
   } catch(_){}
+  // Entering/leaving immersive changes the usable viewport; refit the renderer
+  // the same way orientation / fullscreen changes do (iOS commits the size late).
+  if(typeof _doViewportResize === 'function'){
+    _doViewportResize();
+    setTimeout(_doViewportResize, 250);
+  }
 };
 (function _initFullscreenButton(){
   const btn = document.getElementById('tb-fullscreen-btn');
   if(!btn) return;
-  const supported = !!(document.documentElement.requestFullscreen ||
-                       document.documentElement.webkitRequestFullscreen);
   // Phone-only (user request 2026-06): show the fullscreen toggle on PHONES,
   // never on iPad/tablet (the iPad already uses the whole screen and the button
   // just clutters its top bar). A phone's SHORT screen edge is < 600 CSS px; an
   // iPad's is >= 768. Use a lenient touch test so phones that don't report
   // (any-hover:none) — e.g. some Android browsers — still qualify.
+  // NOTE: we no longer gate on the Fullscreen API being present — iPhone Safari
+  // has no such API, but toggleAppFullscreen() falls back to a CSS "immersive"
+  // mode (hide the viewer chrome) that works there too, so the button is useful
+  // on every phone.
   let touch = false;
   try { touch = window.matchMedia('(pointer:coarse)').matches || (navigator.maxTouchPoints||0) > 0; } catch(_){}
   const shortEdge = Math.min(screen.width||9999, screen.height||9999);
   const isPhone = touch && shortEdge < 600;
   const force = /[?&]fstest=1/.test(location.search);
-  if(supported && (isPhone || force)) btn.style.display = 'inline-block';
+  if(isPhone || force) btn.style.display = 'inline-block';
   const upd = ()=>{
     const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
     btn.textContent = on ? '⤢' : '⛶';
@@ -19893,7 +19955,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.11-alpha';
+const CURRENT_VERSION    = '0.0.12-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
