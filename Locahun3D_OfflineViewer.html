@@ -4757,6 +4757,30 @@ window.toggleAppFullscreen = function(){
   const badge = document.getElementById('qi-badge');
   const row   = document.getElementById('view-tl-btns');
   if(badge && row) row.appendChild(badge);
+  // ── iOS double-tap-zoom guard for the 画質 chip ──────────────────────────
+  // User (2026-06, multiple devices, NOT just iPad): tapping the 画質 chip zooms
+  // the whole top button row. It does NOT reproduce on desktop (mouse) — so it's
+  // a touch-browser gesture (iOS synthesises a double-tap zoom on this small
+  // control), and neither making it a <button> nor touch-action:manipulation
+  // stopped it. The bullet-proof fix is to own the touch sequence: preventDefault
+  // on touchend cancels ANY default gesture for that touch — including the zoom
+  // AND the synthesised click — and we toggle the panel ourselves. The onclick
+  // attribute still handles desktop mouse (no touchend there, so no double-fire).
+  // Touches that move (a drag, not a tap) are ignored.
+  if(badge){
+    let _sx = 0, _sy = 0, _moved = false;
+    badge.addEventListener('touchstart', function(e){
+      const t = e.changedTouches[0]; _sx = t.clientX; _sy = t.clientY; _moved = false;
+    }, { passive: true });
+    badge.addEventListener('touchmove', function(e){
+      const t = e.changedTouches[0];
+      if(Math.abs(t.clientX - _sx) > 10 || Math.abs(t.clientY - _sy) > 10) _moved = true;
+    }, { passive: true });
+    badge.addEventListener('touchend', function(e){
+      e.preventDefault();                 // kills the double-tap zoom + the synthesised click
+      if(!_moved) toggleQualityPanel();   // do the tap action ourselves
+    }, { passive: false });
+  }
 })();
 
 const grid = new THREE.GridHelper(200, 200, 0x221100, 0x110800);
@@ -20213,7 +20237,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.19-alpha';
+const CURRENT_VERSION    = '0.0.20-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
