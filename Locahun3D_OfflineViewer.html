@@ -735,8 +735,10 @@ body{position:fixed;top:0;left:0;}
 @media (pointer:coarse) and (any-hover:none) and (max-width:600px) and (orientation:portrait){
   /* Phone PORTRAIT only: the 4-button camera row already fills the width, so there
      is no room for the badge inline — keep it pinned at the top-right corner here.
-     (Phone landscape, iPad and desktop have room and show it at the row's right end.) */
-  #view-tl-btns > #qi-badge{ position:fixed; top:30px; right:6px; align-self:auto; }
+     (Phone landscape, iPad and desktop have room and show it at the row's right end.)
+     right:0 so the badge's right edge lines up with the camera row's right edge
+     (it hangs neatly under the AR button) instead of sitting 6px short of it. */
+  #view-tl-btns > #qi-badge{ position:fixed; top:30px; right:0px; align-self:auto; }
 }
 #quality-panel .qt{color:#C0C0C0;font-size:.85em;font-weight:600;margin-bottom:10px;}
 #quality-panel .qp-divider{
@@ -1109,8 +1111,17 @@ body{position:fixed;top:0;left:0;}
      elevation arrows, so the raised, horizontally-centred cbar floated awkwardly
      mid-screen ("buttons not at the bottom"). The right half of the bottom edge
      is free, so anchor the cbar to the bottom-RIGHT corner — the tool buttons now
-     sit AT THE BOTTOM where the right thumb rests, clear of the joystick/arrows. */
-  #hud .cbar{ bottom:18px !important; right:18px !important; left:auto !important; transform:none !important; }
+     sit AT THE BOTTOM where the right thumb rests, clear of the joystick/arrows.
+     Use the SAME 24px corner inset as the joystick (bottom-left) and ▲▼ arrows so
+     all bottom controls share one baseline / one margin (was 18px → looked off). */
+  #hud .cbar{ bottom:24px !important; right:24px !important; left:auto !important; transform:none !important; }
+}
+@media (pointer:coarse) and (any-hover:none) and (orientation:portrait) and (max-width:600px){
+  /* Phone PORTRAIT declutter (2026-06): balance the bottom controls — joystick
+     (move) bottom-LEFT, the ▲▼ elevation arrows bottom-RIGHT (right thumb), tool
+     bar centred above. Previously the arrows sat right next to the joystick, so
+     every bottom control crowded the left half and the right side sat empty. */
+  #joy-vert{ left:auto !important; right:24px !important; }
 }
 /* Fullscreen top-overlap fix (2026-06): in fullscreen the browser status bar is
    hidden, so the top UI (topbar / camera action row / perf badge) slides up under
@@ -19882,7 +19893,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.10-alpha';
+const CURRENT_VERSION    = '0.0.11-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
