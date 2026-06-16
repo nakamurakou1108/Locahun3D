@@ -1,6 +1,6 @@
 {
-  "version": "0.0.12-alpha",
+  "version": "0.0.13-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Phone/iPad UI fixes (2026-06). (1) iPhone simple fullscreen: iPhone Safari has no Fullscreen API, so the ⛶ button now toggles an 'immersive' mode that hides the viewer's own top chrome (topbar / camera row / perf badge) to maximise the 3D view, with a floating ⤢ exit button; the real Fullscreen API is still used on iPad/Android. Button shows on phones regardless of API support. (2) iPhone portrait top UI on ONE line: the 🖥 perf badge now flows inline at the camera row's right end (reset/record/AR + badge = ~287px, fits ≥320px) instead of wrapping to a 2nd line. (3) iPad: tap no longer zooms the toolbar — added touch-action:manipulation directly on the toolbar buttons (root-level value didn't reliably stop iOS double-tap-zoom on the buttons) plus -webkit-text-size-adjust:100%. (4) iPad bottom tool bar (cbar) centred in the free space between the joystick/▲▼ (or expanded layer panel) and the right edge via max(--lp-width,296px). Builds on v0.0.11."
+  "notes": "Phone LANDSCAPE bottom tool bar (cbar) centring (2026-06). The cbar was anchored to the bottom-right corner; it now sits horizontally centred in the free space between the joystick + ▲▼ arrow group (left) and the right edge — same treatment the iPad already got (user request 「ジョイスティックと右端の間の左右中央」). Verified at 844×390: cbar centre x=570 (= (296+W)/2), clears the joystick group (right≈278) by 155px, no right overflow for any landscape phone ≥570px wide. bottom:24 keeps it on the shared baseline with the joystick. Builds on v0.0.12."
 }

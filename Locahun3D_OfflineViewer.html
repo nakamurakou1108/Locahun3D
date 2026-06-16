@@ -1127,14 +1127,13 @@ body{position:fixed;top:0;left:0;}
   #view-tl-btns{ flex-wrap:wrap; width: min(510px, calc(100% - var(--lp-width, 0px) - 24px)); row-gap:5px; }
 }
 @media (pointer:coarse) and (any-hover:none) and (orientation:landscape) and (max-height:500px){
-  /* Phone LANDSCAPE: the bottom band is taken by the joystick (left) + the ▲▼
-     elevation arrows, so the raised, horizontally-centred cbar floated awkwardly
-     mid-screen ("buttons not at the bottom"). The right half of the bottom edge
-     is free, so anchor the cbar to the bottom-RIGHT corner — the tool buttons now
-     sit AT THE BOTTOM where the right thumb rests, clear of the joystick/arrows.
-     Use the SAME 24px corner inset as the joystick (bottom-left) and ▲▼ arrows so
-     all bottom controls share one baseline / one margin (was 18px → looked off). */
-  #hud .cbar{ bottom:24px !important; right:24px !important; left:auto !important; transform:none !important; }
+  /* Phone LANDSCAPE: the bottom band's LEFT side is taken by the joystick
+     (left:24, →200) + the ▲▼ elevation arrows (→≈278). Centre the cbar in the
+     FREE space between that group and the right edge (user request 2026-06:
+     "ジョイスティックと右端の間の左右中央") — same approach as the iPad rule.
+     296px clears the joystick/arrow group; bottom:24 keeps it on the shared
+     baseline with the joystick. */
+  #hud .cbar{ bottom:24px !important; left: calc((100% + 296px) / 2) !important; right:auto !important; transform:translateX(-50%) !important; }
 }
 @media (pointer:coarse) and (any-hover:none) and (orientation:portrait) and (max-width:600px){
   /* Phone PORTRAIT declutter (2026-06): balance the bottom controls — joystick
@@ -19955,7 +19954,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.12-alpha';
+const CURRENT_VERSION    = '0.0.13-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
