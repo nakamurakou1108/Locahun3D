@@ -1071,6 +1071,11 @@ body{position:fixed;top:0;left:0;}
      lift is needed (phones, where the joystick reaches centre, still lift it via
      the smartphone block above). */
   #hud .cbar{ left: calc((100% + var(--lp-width, 0px)) / 2) !important; }
+  /* iPad has the room (and the シーンレイヤー panel) to make adding objects
+     useful, so bring back the 📦 オブジェクト追加 dropdown (Cube / Event /
+     Figure) that the generic touch block hides. Phones (<600px) stay without
+     it — the top row is already tight there. */
+  #view-tl-btns > div{ display:inline-block !important; }
   /* When the layer panel is EXPANDED, hide the joystick + ▲▼ arrows: the user is
      editing layers (incl. the figure bone sliders that sit at the panel's bottom,
      which the joystick would otherwise cover) rather than flying the camera. The
@@ -1078,6 +1083,13 @@ body{position:fixed;top:0;left:0;}
      #layer-panel in the DOM, so the general-sibling combinator reaches them.) */
   #layer-panel:not(.collapsed) ~ #joy,
   #layer-panel:not(.collapsed) ~ #joy-vert{ display:none !important; }
+}
+@media (pointer:coarse) and (any-hover:none) and (orientation:portrait) and (min-width:600px) and (max-width:900px){
+  /* iPad PORTRAIT (≤834px): the camera action row now carries 5 buttons
+     (🏠 / 📦オブジェクト追加 / 🎥 / 🎞 / 📱AR) and is centred in the canvas area to
+     the RIGHT of the layer panel, which is too narrow for one row here — wrap it
+     to two. Landscape and the 12.9" (1024px) portrait have room for a single row. */
+  #view-tl-btns{ flex-wrap:wrap; width:370px; row-gap:5px; }
 }
 
 </style>
@@ -19819,7 +19831,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.6-alpha';
+const CURRENT_VERSION    = '0.0.7-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 

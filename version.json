@@ -1,6 +1,6 @@
 {
-  "version": "0.0.6-alpha",
+  "version": "0.0.7-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "iPad deep-state fix (2026-06). On iPad the シーンレイヤー panel sits full-height on the left edge, which (when expanded with a Figure selected, exposing the bone sliders at the panel's bottom) collided with the joystick and the bottom tool bar. Now: the cbar is centred in the canvas area to the RIGHT of the panel (clearing both the panel edge and the ▼ arrow without needing to be lifted), and the on-screen joystick + ▲▼ arrows hide while the panel is expanded (you're editing, not flying — they return when it's collapsed). Verified zero overlap on iPad portrait & landscape in both collapsed and expanded states, with objects/figure added; phones and desktop unaffected. Builds on v0.0.5-alpha's mobile/tablet UI overhaul (phone portrait support, cbar/joystick fixes, larger tap targets)."
+  "notes": "Object-add on iPad (2026-06). The 📦 オブジェクト追加 dropdown (Cube / Event / Figure) is now available on iPad — it was hidden on all touch devices. On iPad portrait (≤834px) the camera action row now wraps to two rows so the extra button fits cleanly to the right of the シーンレイヤー panel; landscape (and 12.9\" portrait) keep one row. Phones are unchanged (the row is too tight there). Verified zero overlap/overflow with the dropdown shown and open, iPad portrait + landscape. Builds on v0.0.5/0.0.6 mobile & iPad UI fixes."
 }
