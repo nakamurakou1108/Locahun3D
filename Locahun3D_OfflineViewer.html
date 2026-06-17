@@ -5006,12 +5006,16 @@ function buildLayerPivot(){
 
   // ── Translation arrows ──
   const SL=2.2, SR=0.14, HL=0.7, HR=0.35;
+  // Y-up convention (matches numeric inputs / applyLayerTransform):
+  //   x red = world X, y green = world Y (up), z blue = world Z (depth).
+  // Arrow geometry points local +Y; orient each so it rides its world axis:
+  //   X → rotZ -90° (+Y→+X) ; Y → no rot (+Y stays up) ; Z → rotX +90° (+Y→+Z depth)
   const AXIS_DEFS=[
     {name:'x',color:0xff3344,rotZ:-Math.PI/2,rotX:0},
-    {name:'y',color:0x33ee55,rotZ:0,rotX:Math.PI/2},
-    {name:'z',color:0x3399ff,rotZ:0,rotX:0},
+    {name:'y',color:0x33ee55,rotZ:0,         rotX:0},
+    {name:'z',color:0x3399ff,rotZ:0,         rotX:Math.PI/2},
   ];
-  const AXIS_DIRS={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,0,1),z:new THREE.Vector3(0,1,0)};
+  const AXIS_DIRS={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,1,0),z:new THREE.Vector3(0,0,1)};
 
   for(const {name,color,rotZ,rotX} of AXIS_DEFS){
     const ag=new THREE.Group();
@@ -5039,10 +5043,13 @@ function buildLayerPivot(){
 
   // ── Scale cube handles (rotation ringの外側に配置) ──
   const SCALE_DIST = 5.6;  // RING_R(4.2) より外側
+  // Y-up convention: sx(red)→world X, sy(green)→world Y(up), sz(blue)→world Z(depth).
+  // Cube geometry sits at local +Y; orient each so it rides its world axis:
+  //   X → rotZ -90° (+Y→+X) ; Y → no rot (+Y stays up) ; Z → rotX +90° (+Y→+Z depth)
   const SCALE_DEFS=[
-    {name:'sx',color:0xff6677,rotZ:-Math.PI/2,rotX:0, axisDir:new THREE.Vector3(1,0,0)},
-    {name:'sy',color:0x66ee88,rotZ:0,rotX:Math.PI/2, axisDir:new THREE.Vector3(0,0,1)},
-    {name:'sz',color:0x77aaff,rotZ:0,rotX:0,          axisDir:new THREE.Vector3(0,1,0)},
+    {name:'sx',color:0xff6677,rotZ:-Math.PI/2,rotX:0,         axisDir:new THREE.Vector3(1,0,0)},
+    {name:'sy',color:0x66ee88,rotZ:0,         rotX:0,         axisDir:new THREE.Vector3(0,1,0)},
+    {name:'sz',color:0x77aaff,rotZ:0,         rotX:Math.PI/2, axisDir:new THREE.Vector3(0,0,1)},
   ];
   lpv.scaleHandles={};
   for(const {name,color,rotZ,rotX,axisDir} of SCALE_DEFS){
@@ -5062,10 +5069,17 @@ function buildLayerPivot(){
 
   // ── Rotation rings (larger, clearly outside translation arrows) ──
   const RING_R=4.2, RING_TUBE=0.16;
+  // Y-up convention (matches numeric inputs / applyLayerTransform):
+  //   rx red = world X, ry green = world Y (up), rz blue = world Z (depth).
+  // Torus geometry lies in its local XY plane (axis = local +Z). Orient each
+  // ring so its axis aligns with the intended world axis:
+  //   X axis → rotate torus +90° about Y  → ring axis = world X
+  //   Y axis → rotate torus -90° about X  → ring axis = world Y (up)
+  //   Z axis → no rotation                → ring axis = world Z (depth)
   const rotRings=[
-    {name:'rx',color:0xff3344, worldAxis:new THREE.Vector3(1,0,0), torusRotX:0,          torusRotY:Math.PI/2},
-    {name:'ry',color:0x33ee55, worldAxis:new THREE.Vector3(0,0,1), torusRotX:0,          torusRotY:0},
-    {name:'rz',color:0x3399ff, worldAxis:new THREE.Vector3(0,1,0), torusRotX:Math.PI/2,  torusRotY:0},
+    {name:'rx',color:0xff3344, worldAxis:new THREE.Vector3(1,0,0), torusRotX:0,           torusRotY:Math.PI/2},
+    {name:'ry',color:0x33ee55, worldAxis:new THREE.Vector3(0,1,0), torusRotX:-Math.PI/2,  torusRotY:0},
+    {name:'rz',color:0x3399ff, worldAxis:new THREE.Vector3(0,0,1), torusRotX:0,           torusRotY:0},
   ];
   lpv.rotHandles={};
   for(const {name,color,worldAxis,torusRotX,torusRotY} of rotRings){
@@ -5221,11 +5235,14 @@ function updateLpvDrag(clientX,clientY){
         z:THREE.MathUtils.radToDeg(euler.z),
       };
     } else {
-      // ── ワールド回転: Eulerで直接適用 ──
-      // rx→X軸, ry→Z軸(奥行き), rz→Y軸(上方向)
-      if     (ax==='rx') L.rot={...sr, x:sr.x+delta};
-      else if(ax==='ry') L.rot={...sr, z:sr.z+delta}; // World Z軸
-      else if(ax==='rz') L.rot={...sr, y:sr.y-delta}; // World Y軸
+      // ── ワールド回転: Eulerで直接適用 (Y-up 規約 / 数値入力と一致) ──
+      // rx(赤)→World X軸, ry(緑)→World Y軸(上), rz(青)→World Z軸(奥行き)
+      // 符号は「worldAxisごとの delta 関係」を保存:
+      //   worldX→+delta, worldY→-delta, worldZ→+delta
+      // (tanA/tanB/startAngle の幾何から決まる固定関係。リング入替時も維持)
+      if     (ax==='rx') L.rot={...sr, x:sr.x+delta}; // World X軸
+      else if(ax==='ry') L.rot={...sr, y:sr.y-delta}; // World Y軸(上)
+      else if(ax==='rz') L.rot={...sr, z:sr.z+delta}; // World Z軸(奥行き)
     }
 
   } else if(lpv.dragging.isSca){
@@ -5235,9 +5252,9 @@ function updateLpvDrag(clientX,clientY){
     const sp=lpv.dragging.startScale;
     const delta=hit.clone().sub(lpv.dragging.startHit);
     const proj=delta.dot(lpv.dragging.effectiveAxisDir||lpv.dragging.axisDir);
-    // Z=up convention: sy(green)→worldZ→L.scale.z, sz(blue)→worldY→L.scale.y
+    // Y-up convention: sy(green)→worldY→L.scale.y, sz(blue)→worldZ→L.scale.z
     const scaleAxis=lpv.dragging.axisName;
-    const scaleKeyMap={'sx':'x','sy':'z','sz':'y'};
+    const scaleKeyMap={'sx':'x','sy':'y','sz':'z'};
     const skey=scaleKeyMap[scaleAxis]||scaleAxis[1];
     const newS=Math.max(0.01, sp[skey] + proj * 0.5);
     L.scale={...L.scale, [skey]:newS};
@@ -14988,10 +15005,15 @@ window.toggleQualityPanel=function(){
       const row = badge.closest('#view-tl-btns');
       const anchorBottom = Math.max(br.bottom, row ? row.getBoundingClientRect().bottom : br.bottom);
       panel.style.top    = Math.round(anchorBottom + 2) + 'px';
-      // Centre the panel horizontally (user 2026-06: it was anchored to the chip
-      // at the right end and read as "biased to the right"). Drop the chip-fused
-      // right-anchor + squared corner; it's a centred card under the row now.
-      panel.style.left   = '50%';
+      // Centre the panel directly UNDER the 画質 chip (user 2026-06: "画質ボタンの
+      // 真下中央" — its horizontal centre lines up with the chip's centre, hanging
+      // straight down). Clamp so a chip near the screen edge can't push the panel
+      // off-screen. (Not screen-centred — that read as detached from the chip.)
+      const _chipCx = br.left + br.width / 2;
+      const _panelW = Math.min(220, window.innerWidth - 28);
+      const _cx = Math.max(_panelW / 2 + 8,
+                  Math.min(window.innerWidth - _panelW / 2 - 8, _chipCx));
+      panel.style.left   = Math.round(_cx) + 'px';
       panel.style.right  = 'auto';
       panel.style.transform = 'translateX(-50%)';
       panel.style.bottom = 'auto';
@@ -20242,7 +20264,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.22-alpha';
+const CURRENT_VERSION    = '0.0.23-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
