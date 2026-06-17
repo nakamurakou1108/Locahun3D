@@ -18179,6 +18179,16 @@ async function restoreProject(project) {
     if(wireMesh){ wireMesh.position.set(L.pos.x,L.pos.y,L.pos.z); }
   }
 
+  // Restore pushes layers directly (not via addLayer), so the per-frame
+  // activity counters (_activeSplatCount / _activeBillboardCount /
+  // _activeFigureCount) are never refreshed by the loop above. Without this
+  // recount they stay at whatever the PREVIOUS scene left them at — e.g.
+  // loading a splat-less project after a splat scene leaves
+  // _activeSplatCount=1, so animate() keeps running the splat-sort / active
+  // window every frame for a splat that no longer exists (and the inverse
+  // skips real work). Recompute from the freshly restored `layers` array.
+  if(typeof _recountLayerActivity === 'function') _recountLayerActivity();
+
   renderLayerList(); renderTransformPanel(); requestMinimapUpdate();
 
   // Show HUD / hide drop zone (same as normal file load)
@@ -20293,7 +20303,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.25-alpha';
+const CURRENT_VERSION    = '0.0.26-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
