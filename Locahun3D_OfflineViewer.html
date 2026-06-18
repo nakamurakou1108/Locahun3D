@@ -4220,6 +4220,10 @@ function updateSunMode(){
   try { times = SunCalc.getTimes(date, sun.lat, sun.lng); } catch(_){}
   const isEvening = times && !isNaN(times.solarNoon.getTime()) ? (date.getTime() > times.solarNoon.getTime()) : (sun.timeMin >= 12*60);
 
+  // 予報を取得済み＆自動モードなら、現在の日付/時刻に対応する天気を sun.weather に
+  // 反映してからパレットを組む → 日時を動かすだけで光が実天気に追従する。
+  if(typeof _sunFcApplyAuto==='function') _sunFcApplyAuto();
+
   // 晴天パレット → 天気変換 → __sun プリセット書き換え → ドーム uniform + sceneTint
   const pal = _applyWeather(_sunPalette(altDeg, isEvening), sun.weather);
   const clear = (sun.weather === 'clear');
@@ -4240,9 +4244,9 @@ function updateSunMode(){
   applySceneTint();
   _sunUpdateReadout(altDeg, w.az, times);
   _sunVizUpdate(dir, times);   // 3D コンパス＋太陽軌道を更新
-  // 実天気予報を取得済みなら、現在の日付/場所/時刻に合わせて参照表示を更新
-  // （日付や場所が変わればキー不一致で自動的に隠れる）。天気の自動適用はしない。
-  if(typeof _sunFcReadout==='function') _sunFcReadout(false);
+  // 取得済みの予報を、現在の日付/場所/時刻に合わせて参照表示（範囲外は自動的に隠れる）。
+  // 天気の自動適用は上の _sunFcApplyAuto() で済んでいる。
+  if(typeof _sunFcReadout==='function') _sunFcReadout();
   markDirty(6);
 }
 
@@ -4335,6 +4339,7 @@ window.onSunTime = function(val){ sun.timeMin=Math.max(0,Math.min(1439,+val)); u
 window.onSunWeather = function(wx){
   if(wx!=='clear' && wx!=='cloudy' && wx!=='rain') return;
   sun.weather = wx;
+  sun._fcAuto = false;   // 手動で天気を選んだら予報の自動追従を解除（再取得で再開）
   document.querySelectorAll('#sun-panel .sun-wx-btn').forEach(b=>b.classList.toggle('on', b.dataset.wx===wx));
   updateSunMode();
 };
@@ -4368,9 +4373,32 @@ function _sunDateStr(){ return sun.y+'-'+String(sun.mo).padStart(2,'0')+'-'+Stri
 function _sunFcKey(){ return _sunDateStr()+'@'+sun.lat.toFixed(2)+','+sun.lng.toFixed(2); }
 function _sunFcShow(html, on){ const el=document.getElementById('sun-forecast'); if(!el) return; el.innerHTML=html; el.style.display=on?'block':'none'; }
 
+function _sunFcSyncButtons(){ document.querySelectorAll('#sun-panel .sun-wx-btn').forEach(b=>b.classList.toggle('on', b.dataset.wx===sun.weather)); }
+// キャッシュ済み予報から「現在の日付/場所/時刻」の天気種別(clear/cloudy/rain)を返す。無ければnull。
+function _sunFcWeatherForNow(){
+  const fc=sun._fc;
+  if(!fc||!fc.hourly||!fc.hourly.time) return null;
+  if(fc.keyLoc!==(sun.lat.toFixed(2)+','+sun.lng.toFixed(2))) return null;
+  const dstr=_sunDateStr();
+  if(dstr<fc.start || dstr>fc.end) return null;
+  const h=Math.max(0,Math.min(23,Math.round(sun.timeMin/60)));
+  const idx=fc.hourly.time.indexOf(dstr+'T'+String(h).padStart(2,'0')+':00');
+  if(idx<0) return null;
+  const code=(fc.hourly.weather_code&&fc.hourly.weather_code[idx]!=null)?fc.hourly.weather_code[idx]:null;
+  if(code==null) return null;
+  return _wmoWx(code).wx;
+}
+// 自動モード中、現在の日時に対応する予報の天気を sun.weather に反映。
+// updateSunMode を呼ばず直接書き換える（onSunWeather経由だと再帰するため）。
+function _sunFcApplyAuto(){
+  if(!sun._fcAuto) return;
+  const wx=_sunFcWeatherForNow();
+  if(wx && wx!==sun.weather){ sun.weather=wx; _sunFcSyncButtons(); }
+}
+
 // キャッシュ済み予報から、現在の日付/場所/時刻に対応する行を表示。
 // applyWeather=true のとき天気トグル(clear/cloudy/rain)も実天気に合わせる。
-function _sunFcReadout(applyWeather){
+function _sunFcReadout(){
   const fc=sun._fc;
   if(!fc || !fc.hourly || !fc.hourly.time) return;
   const loc=sun.lat.toFixed(2)+','+sun.lng.toFixed(2);
@@ -4398,7 +4426,6 @@ function _sunFcReadout(applyWeather){
     '<div style="color:#9bd;margin-top:1px">'+(cc!=null?'雲量 '+cc+'%　':'')+(pr!=null?'降水 '+pr+'mm　':'')+(ws!=null?'風 '+ws+'km/h':'')+'</div>'+
     '<div style="color:#7a8aa0;font-size:.9em;margin-top:2px">'+place+' '+dstr+' '+String(h).padStart(2,'0')+':00 ｜ Open-Meteo（前後1週間を保持中）</div>',
     true);
-  if(applyWeather && typeof window.onSunWeather==='function') window.onSunWeather(w.wx);
 }
 
 window.fetchSunForecast = async function(){
@@ -4436,8 +4463,11 @@ window.fetchSunForecast = async function(){
       _sunFcShow('⚠ この期間の予報データがありません（予報は約16日先まで、過去は数か月前まで）。', true);
       sun._fc=null; return;
     }
+    sun._fcAuto=true;      // 以後、日時を動かすたびに予報の天気を自動適用
     sun._fc={ keyLoc:loc, start:sd, end:ed, hourly:j.hourly };
-    _sunFcReadout(true);   // 現在の日時の予報を表示＋天気を自動適用
+    if(typeof _sunFcApplyAuto==='function') _sunFcApplyAuto();   // 取得時点の天気を反映
+    if(sun.active && typeof updateSunMode==='function') updateSunMode();  // 光を再計算
+    _sunFcReadout();       // 参照表示（日照OFFでも表示）
   }catch(e){
     _sunFcShow('⚠ 予報の取得に失敗しました（'+((e&&e.message)||e)+'）。接続環境をご確認ください。', true);
     sun._fc=null;
@@ -20112,7 +20142,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.32-alpha';
+const CURRENT_VERSION    = '0.0.33-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
