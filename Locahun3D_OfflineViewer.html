@@ -1662,7 +1662,7 @@ body.immersive #immersive-exit{ display:inline-block; }
       background:linear-gradient(to bottom, rgba(255,180,84,.06), transparent)">
       <div style="display:flex;align-items:baseline;gap:14px">
         <strong style="font-size:1.25em;letter-spacing:.04em" data-i18n-key="manual-title">📖 ロケハン3D ユーザーマニュアル</strong>
-        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.1.0-beta / 3DGS マルチビューア + プリビズ (ベータ版)</span>
+        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.1.2-beta / 3DGS マルチビューア + プリビズ (ベータ版)</span>
       </div>
       <button onclick="closeManual()" style="background:transparent;border:1px solid rgba(255,255,255,.12);
         color:#aab;border-radius:6px;padding:6px 12px;font-size:.92em;cursor:pointer;font-family:inherit"
@@ -1676,12 +1676,9 @@ body.immersive #immersive-exit{ display:inline-block; }
       background:rgba(10,10,12,.4);overflow-y:auto;padding:14px 0">
       <div class="mn-grp" data-i18n-key="manual-grp-quick">クイックスタート</div>
       <a href="#m-quick" class="mn-link" data-i18n-key="manual-link-quick">🚀 5分で使う</a>
-      <a href="#m-load"  class="mn-link" data-i18n-key="manual-link-load">📂 ファイルを開く</a>
 
       <div class="mn-grp" data-i18n-key="manual-grp-basic">基本操作</div>
       <a href="#m-cam"   class="mn-link" data-i18n-key="manual-link-cam">🎮 カメラを動かす</a>
-      <a href="#m-mouse" class="mn-link" data-i18n-key="manual-link-mouse">🖱 マウス操作</a>
-      <a href="#m-orient" class="mn-link" data-i18n-key="manual-link-orient">🔄 シーンの向きを直す</a>
 
       <div class="mn-grp" data-i18n-key="manual-grp-layer">レイヤー</div>
       <a href="#m-layers"  class="mn-link" data-i18n-key="manual-link-layers">📁 レイヤーパネル</a>
@@ -1691,14 +1688,10 @@ body.immersive #immersive-exit{ display:inline-block; }
       <div class="mn-grp" data-i18n-key="manual-grp-tools">機能ツール</div>
       <a href="#m-measure" class="mn-link" data-i18n-key="manual-link-measure">📐 距離測定</a>
       <a href="#m-camtool" class="mn-link" data-i18n-key="manual-link-camtool">📷 カメラツール</a>
-      <a href="#m-salvage" class="mn-link" data-i18n-key="manual-link-salvage">📥 サルベージ</a>
-      <a href="#m-env"     class="mn-link" data-i18n-key="manual-link-env">🌅 環境 / 疑似HDRI</a>
-      <a href="#m-map"     class="mn-link" data-i18n-key="manual-link-map">🗺 ミニマップ</a>
+      <a href="#m-env"     class="mn-link" data-i18n-key="manual-link-env">☀ 日照・天気</a>
 
       <div class="mn-grp" data-i18n-key="manual-grp-save">設定 / 保存</div>
-      <a href="#m-quality" class="mn-link" data-i18n-key="manual-link-quality">🖥 画質と速度</a>
       <a href="#m-save"    class="mn-link" data-i18n-key="manual-link-save">💾 プロジェクト保存</a>
-      <a href="#m-shortcut" class="mn-link" data-i18n-key="manual-link-shortcut">⌨ ショートカット早見表</a>
 
       <div class="mn-grp" data-i18n-key="manual-grp-trouble">トラブル</div>
       <a href="#m-faq"     class="mn-link" data-i18n-key="manual-link-faq">❓ よくある質問</a>
@@ -1708,6 +1701,106 @@ body.immersive #immersive-exit{ display:inline-block; }
     <main id="manual-body" style="grid-area:body;overflow-y:auto;padding:24px 36px;
       line-height:1.7;font-size:.94em;scroll-behavior:smooth">
     <div class="m-ja">
+      <section id="m-quick">
+        <h2>🚀 5 分で使う</h2>
+        <p style="color:#aab">ロケハン3Dは、3Dスキャン（3DGS）を読み込んでロケハン・絵コンテ・プリビズに使うビューアーです。まずはこの3ステップ。</p>
+        <ol style="line-height:1.9">
+          <li><b>読み込む</b> — 最初の画面の「📂」エリアに 3DGS ファイル（.splat / .ply など）をドラッグ。試すだけなら「デモシーン」ボタン。</li>
+          <li><b>動かす</b> — マウス<b>右ドラッグ</b>で視点回転、<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>で移動。</li>
+          <li><b>使う</b> — 画面下のボタンで「カメラ / 日照 / 測定」、上のボタンで「オブジェクト追加」。左のレイヤーパネルで管理。</li>
+        </ol>
+      </section>
+
+      <section id="m-cam">
+        <h2>🎮 カメラを動かす</h2>
+        <ul style="line-height:1.9">
+          <li><b>視点を回す</b>：マウス右ドラッグ</li>
+          <li><b>移動</b>：<kbd>W</kbd>前 / <kbd>S</kbd>後 / <kbd>A</kbd>左 / <kbd>D</kbd>右 / <kbd>Q</kbd>下 / <kbd>E</kbd>上</li>
+          <li><b>移動速度</b>：マウスホイール（または画質パネルのスライダー）</li>
+          <li><b>視点リセット</b>：上部「🏠 カメラリセット」</li>
+        </ul>
+        <p style="color:#889">スマホ / iPad では、左下のジョイスティックで移動、画面ドラッグで視点回転します。</p>
+      </section>
+
+      <section id="m-layers">
+        <h2>📁 レイヤーとフォルダー</h2>
+        <p>左の「シーンレイヤー」に、読み込んだファイルや追加オブジェクトが並びます。</p>
+        <ul style="line-height:1.9">
+          <li>👁 表示 / 非表示の切替</li>
+          <li>✏️ 名前を変更（ダブルクリックでも可）</li>
+          <li>🗑 削除（<kbd>Ctrl</kbd>+<kbd>Z</kbd> で元に戻せます）</li>
+          <li>ドラッグで並べ替え・フォルダーへ収納</li>
+          <li>🔒 <b>フォルダーをロック</b>：中身の移動・編集・削除をまとめて無効化（誤操作防止）。もう一度押すと解除。</li>
+        </ul>
+      </section>
+
+      <section id="m-trans">
+        <h2>⇆ 位置・回転・拡縮</h2>
+        <p>オブジェクトを選ぶと、3Dハンドル（ギズモ）と数値入力が出ます。</p>
+        <ul style="line-height:1.9">
+          <li>矢印＝移動 / リング＝回転 / キューブ＝拡縮</li>
+          <li>「ローカル / ワールド」で座標系を切替（新規・読み込みは既定でローカル）</li>
+          <li>iPad ではギズモを<b>指でドラッグ</b>して操作できます</li>
+        </ul>
+      </section>
+
+      <section id="m-add">
+        <h2>＋ オブジェクトを追加</h2>
+        <p>上部「📦 オブジェクト追加」から種類を選び、<b>シーン内を左クリック長押し</b>して配置します（押して位置を探り、離して確定。<kbd>Esc</kbd>で中止）。</p>
+        <ul style="line-height:1.9">
+          <li>📦 <b>Cube</b> — 寸法の目安・あたり</li>
+          <li>🟠 <b>Event</b> — 注目ポイント。画像を貼れます</li>
+          <li>👤 <b>Figure</b> — 人型（身長・ポーズ調整）でスケール感を確認</li>
+          <li>🛣 <b>パス</b> — 4点で囲む区画＋中央ラベル（駐車区画など）。ラベルは複数行OK</li>
+        </ul>
+      </section>
+
+      <section id="m-measure">
+        <h2>📐 距離測定</h2>
+        <p>画面下「📐 測定」をON。スキャン表面の2点間の<b>実距離</b>を測ります。</p>
+        <ul style="line-height:1.9">
+          <li>左クリック長押しで点をプレビュー → 離して確定（点A → 点B）</li>
+          <li>「+ 高さを図る」で3点目（高さ）も測定</li>
+          <li>マーカーは矢印で微調整、🗑 でクリア</li>
+        </ul>
+      </section>
+
+      <section id="m-camtool">
+        <h2>📷 カメラツール / アニメーション</h2>
+        <p><b>カメラツール</b>（下「📷 カメラ」）：実機のレンズ・センサー・アスペクト比を設定し、構図枠とグリッドを表示。JPEG撮影でカメラ情報も焼き込めます。</p>
+        <p><b>カメラアニメーション</b>（上「🎞 アニメーション」）：カメラ位置を複数登録してパスを作り、MP4で書き出し。動きは「イージング（緩急） / リニア（等速）」を選べます。</p>
+      </section>
+
+      <section id="m-env">
+        <h2>☀ 日照・天気</h2>
+        <p>画面下「☀ 日照」：日付・時刻・都道府県から太陽の位置と光のムードを再現します。</p>
+        <ul style="line-height:1.9">
+          <li>時刻スライダーで朝〜夜の光をスクラブ</li>
+          <li>天気（晴れ / 曇り / 雨）で空の雰囲気を変更</li>
+          <li>「🌐 実際の天気予報を取得」でオンラインの実天気に追従（任意）</li>
+        </ul>
+      </section>
+
+      <section id="m-save">
+        <h2>💾 保存・読み込み</h2>
+        <ul style="line-height:1.9">
+          <li><b>オフライン保存</b>（左上）：シーン全体を1つのZIPに保存。レイヤー・オブジェクト・カメラ・設定をまるごと復元できます。</li>
+          <li><b>読み込み</b>（レイヤーパネル上の「📁 読み込み」）：ZIPや 3DGS / モデルを追加。</li>
+          <li><b>🎥 カメラ保存</b>：今のカメラ位置をレイヤーとして保存。</li>
+        </ul>
+      </section>
+
+      <section id="m-faq">
+        <h2>❓ よくある質問・ショートカット</h2>
+        <ul style="line-height:1.9">
+          <li><b>シーンが上下逆 / 横倒し</b> → レイヤーを選び「軸反転」または角度入力で調整。</li>
+          <li><b>動作が重い</b> → 右上の画質チップで「低」に。描画は最大60fpsです。</li>
+          <li><b>言語</b> → 右上「EN / 日本語」で切替。</li>
+        </ul>
+        <p style="color:#889"><b>ショートカット</b>：<kbd>Ctrl</kbd>+<kbd>Z</kbd> 取り消し / <kbd>Ctrl</kbd>+<kbd>Y</kbd> やり直し / <kbd>Ctrl</kbd>+<kbd>D</kbd> 複製</p>
+      </section>
+    </div><!-- /.m-ja (new) -->
+    <div class="m-old" style="display:none" aria-hidden="true">
 
       <!-- ── QUICK START ── -->
       <section id="m-quick">
@@ -2098,6 +2191,106 @@ body.immersive #immersive-exit{ display:inline-block; }
     </div><!-- /.m-ja -->
 
     <div class="m-en">
+      <section id="m-quick">
+        <h2>🚀 5-Minute Quickstart</h2>
+        <p style="color:#aab">Locahun3D is a viewer for loading 3D scans (3DGS) for location scouting, storyboards and previz. Start with these three steps.</p>
+        <ol style="line-height:1.9">
+          <li><b>Load</b> — drag a 3DGS file (.splat / .ply, etc.) onto the “📂” area on the start screen, or hit “Demo scene” to try it.</li>
+          <li><b>Move</b> — <b>right-drag</b> the mouse to look around; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move.</li>
+          <li><b>Use</b> — bottom buttons: Camera / Sun / Measure. Top button: Add object. Manage everything in the left layer panel.</li>
+        </ol>
+      </section>
+
+      <section id="m-cam">
+        <h2>🎮 Moving the camera</h2>
+        <ul style="line-height:1.9">
+          <li><b>Look around</b>: right-drag the mouse</li>
+          <li><b>Move</b>: <kbd>W</kbd>fwd / <kbd>S</kbd>back / <kbd>A</kbd>left / <kbd>D</kbd>right / <kbd>Q</kbd>down / <kbd>E</kbd>up</li>
+          <li><b>Speed</b>: mouse wheel (or the slider in the quality panel)</li>
+          <li><b>Reset view</b>: “🏠 Camera reset” at the top</li>
+        </ul>
+        <p style="color:#889">On phone / iPad, use the bottom-left joystick to move and drag the screen to look around.</p>
+      </section>
+
+      <section id="m-layers">
+        <h2>📁 Layers &amp; folders</h2>
+        <p>Loaded files and added objects appear in “Scene layers” on the left.</p>
+        <ul style="line-height:1.9">
+          <li>👁 toggle visibility</li>
+          <li>✏️ rename (double-click also works)</li>
+          <li>🗑 delete (<kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo)</li>
+          <li>drag to reorder / drop into a folder</li>
+          <li>🔒 <b>Lock a folder</b> to disable moving, editing and deleting its contents (prevents accidents). Click again to unlock.</li>
+        </ul>
+      </section>
+
+      <section id="m-trans">
+        <h2>⇆ Move / rotate / scale</h2>
+        <p>Select an object to get the 3D handles (gizmo) and numeric inputs.</p>
+        <ul style="line-height:1.9">
+          <li>arrows = move / rings = rotate / cubes = scale</li>
+          <li>switch coordinate space with “Local / World” (new &amp; imported objects default to Local)</li>
+          <li>on iPad you can <b>drag the gizmo with your finger</b></li>
+        </ul>
+      </section>
+
+      <section id="m-add">
+        <h2>＋ Adding objects</h2>
+        <p>Pick a type from “📦 Add object” at the top, then <b>long-press (left-click) in the scene</b> to place it (hold to aim, release to confirm; <kbd>Esc</kbd> to cancel).</p>
+        <ul style="line-height:1.9">
+          <li>📦 <b>Cube</b> — size reference / blocking</li>
+          <li>🟠 <b>Event</b> — a point of interest; you can attach an image</li>
+          <li>👤 <b>Figure</b> — a human (adjustable height &amp; pose) for sense of scale</li>
+          <li>🛣 <b>Path</b> — a 4-point area with a centre label (e.g. parking bays). Labels can be multi-line.</li>
+        </ul>
+      </section>
+
+      <section id="m-measure">
+        <h2>📐 Distance measure</h2>
+        <p>Turn on “📐 Measure” at the bottom. Measures the <b>real distance</b> between two points on the scan surface.</p>
+        <ul style="line-height:1.9">
+          <li>long-press to preview a point, release to confirm (point A → point B)</li>
+          <li>“+ Measure height” adds a 3rd point for height</li>
+          <li>fine-tune markers with the arrows; 🗑 to clear</li>
+        </ul>
+      </section>
+
+      <section id="m-camtool">
+        <h2>📷 Camera tool / animation</h2>
+        <p><b>Camera tool</b> (“📷 Camera” at the bottom): set a real lens, sensor and aspect ratio, show the framing box and grid, and capture JPEGs with camera metadata burned in.</p>
+        <p><b>Camera animation</b> (“🎞 Animation” at the top): add several camera keys to build a path and export an MP4. Motion can be <b>Ease in/out</b> or <b>Linear</b>.</p>
+      </section>
+
+      <section id="m-env">
+        <h2>☀ Sun &amp; weather</h2>
+        <p>“☀ Sun” at the bottom: reproduces the sun position and lighting mood from date, time and prefecture.</p>
+        <ul style="line-height:1.9">
+          <li>scrub the time slider from morning to night</li>
+          <li>change the sky mood with weather (clear / cloudy / rain)</li>
+          <li>“🌐 Get live forecast” follows real online weather (optional)</li>
+        </ul>
+      </section>
+
+      <section id="m-save">
+        <h2>💾 Save &amp; load</h2>
+        <ul style="line-height:1.9">
+          <li><b>Offline save</b> (top-left): saves the whole scene into a single ZIP — layers, objects, camera and settings all restore.</li>
+          <li><b>Load</b> (“📁 Load” above the layer panel): add a ZIP or a 3DGS / model.</li>
+          <li><b>🎥 Save camera</b>: stores the current camera position as a layer.</li>
+        </ul>
+      </section>
+
+      <section id="m-faq">
+        <h2>❓ FAQ &amp; shortcuts</h2>
+        <ul style="line-height:1.9">
+          <li><b>Scene upside-down / sideways</b> → select the layer and use “Flip axis” or the angle inputs.</li>
+          <li><b>Running slow</b> → set the quality chip (top-right) to “Low”. Rendering is capped at 60 fps.</li>
+          <li><b>Language</b> → toggle “EN / 日本語” at the top-right.</li>
+        </ul>
+        <p style="color:#889"><b>Shortcuts</b>: <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo / <kbd>Ctrl</kbd>+<kbd>Y</kbd> redo / <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicate</p>
+      </section>
+    </div><!-- /.m-en (new) -->
+    <div class="m-old" style="display:none" aria-hidden="true">
       <!-- ── QUICK START (EN) ── -->
       <section>
         <h2>🚀 5-Minute Quickstart</h2>
@@ -2959,7 +3152,7 @@ body.ar-active #dz{display:none !important;}
     <div class="dz-changelog-body" id="dz-changelog-body" hidden>
       <div class="cl-entry">
         <div class="cl-entry-head">
-          <span class="cl-ver">v 0.1.0-beta</span>
+          <span class="cl-ver">v 0.1.2-beta</span>
           <span class="cl-date">2026-06-19</span>
           <span class="cl-tag"><span class="cl-ja">ベータ版・操作性・モバイル・英語</span><span class="cl-en">Beta · UX · Mobile · i18n</span></span>
         </div>
@@ -2973,6 +3166,8 @@ body.ar-active #dz{display:none !important;}
           <li>🌐 <b>英語化</b>: パスメニュー・実天気予報の読み出し・各UIラベルを翻訳。撮影バーンインのロゴ文字を<b>白</b>に、上部ロゴを<b>アイコン</b>化</li>
           <li>📱 スマホ: 端スワイプでのページ移動を抑止／最新版チェックボタンを非表示。<b>FOV110°・録画・「ポリゴン1/4」・書き出しを廃止</b></li>
           <li>↩ <b>Ctrl+Z でオブジェクトの追加・削除も取り消し</b>（やり直しはCtrl+Y）／画質チップが押すとサイズ変化する不具合を修正／上部ロゴをアイコン＋「ロケハン3D」表記に</li>
+          <li>🔒 <b>フォルダーの編集ロック</b>を追加（中身の移動・編集・削除を一括無効化）／🎬 カメラアニメのイージングを弱めに調整＋緩急/等速の切替</li>
+          <li>🧹 案内バナーを下部に統一して上部ボタンとの重なりを解消／日照パネルを簡潔化／<b>ユーザーマニュアルを現行情報で再整備</b>（わかりやすさ優先）</li>
         </ul>
         <ul class="cl-en">
           <li>🛣 <b>Path</b>: center label now <b>multi-line + auto-sizing</b> (paragraph breaks + wrapping, no more clipping). Layers named “Path 1, 2…”</li>
@@ -2984,6 +3179,8 @@ body.ar-active #dz{display:none !important;}
           <li>🌐 <b>English</b> for the Path menu, live-weather readout and various labels; burn-in wordmark recolored <b>white</b>; top-bar logo is now an <b>icon</b></li>
           <li>📱 Phones: edge-swipe page navigation blocked; update-check button hidden. <b>Removed FOV 110°, view recording, “1/4 polygon”, and Export</b></li>
           <li>↩ <b>Ctrl+Z now also undoes object add / delete</b> (Ctrl+Y to redo); fixed the quality chip resizing when tapped; top-bar logo is now an icon + “LOCAHUN 3D”</li>
+          <li>🔒 <b>Folder edit-lock</b> added (disables moving / editing / deleting its contents); 🎬 camera-anim easing softened, with Ease/Linear toggle</li>
+          <li>🧹 Instruction banners unified to the bottom (no longer overlap the top buttons); sun panel simplified; <b>user manual rebuilt</b> with current, clearer content</li>
         </ul>
       </div>
       <div class="cl-entry">
@@ -3014,7 +3211,7 @@ body.ar-active #dz{display:none !important;}
     </div>
   </div>
   <div class="dz-version-line">
-    <span id="tb-version">v 0.1.0-beta</span>
+    <span id="tb-version">v 0.1.2-beta</span>
   </div>
 </div>
 
@@ -18978,7 +19175,7 @@ Object.assign(I18N.ja,{
   'lbl-rot':'角度',
   'tt-edit-dbl':'ダブルクリックで編集',
   'manual-title':'📖 ロケハン3D ユーザーマニュアル',
-  'manual-version':'v 0.1.0-beta / 3DGS マルチビューア + プリビズ (ベータ版)',
+  'manual-version':'v 0.1.2-beta / 3DGS マルチビューア + プリビズ (ベータ版)',
   'manual-close':'閉じる ✕',
   'manual-grp-quick':'クイックスタート',
   'manual-grp-basic':'基本操作',
@@ -18997,7 +19194,7 @@ Object.assign(I18N.ja,{
   'manual-link-measure':'📐 距離測定',
   'manual-link-camtool':'📷 カメラツール',
   'manual-link-salvage':'📥 サルベージ',
-  'manual-link-env':'🌅 環境 / 疑似HDRI',
+  'manual-link-env':'☀ 日照・天気',
   'manual-link-map':'🗺 ミニマップ',
   'manual-link-quality':'🖥 画質と速度',
   'manual-link-save':'💾 プロジェクト保存',
@@ -19242,7 +19439,7 @@ Object.assign(I18N.en,{
   'lbl-rot':'Angle',
   'tt-edit-dbl':'Double-click to edit',
   'manual-title':'📖 LOCAHUN 3D User Manual',
-  'manual-version':'v 0.1.0-beta / 3DGS multi-viewer + previz (Beta)',
+  'manual-version':'v 0.1.2-beta / 3DGS multi-viewer + previz (Beta)',
   'manual-close':'Close ✕',
   'manual-grp-quick':'QUICK START',
   'manual-grp-basic':'BASICS',
@@ -19261,7 +19458,7 @@ Object.assign(I18N.en,{
   'manual-link-measure':'📐 Distance measure',
   'manual-link-camtool':'📷 Camera tool',
   'manual-link-salvage':'📥 Salvage',
-  'manual-link-env':'🌅 Environment / pseudo HDRI',
+  'manual-link-env':'☀ Sun & Weather',
   'manual-link-map':'🗺 Minimap',
   'manual-link-quality':'🖥 Quality & speed',
   'manual-link-save':'💾 Save project',
@@ -20551,7 +20748,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.1.1-beta';
+const CURRENT_VERSION    = '0.1.2-beta';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
