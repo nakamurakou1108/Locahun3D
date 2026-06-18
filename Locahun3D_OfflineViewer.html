@@ -18067,21 +18067,35 @@ function _pathPopulateGroup(g, local, color, opacity, labelText){
   for(let i=g.children.length-1;i>=0;i--){ const o=g.children[i]; g.remove(o); if(o.geometry)o.geometry.dispose(); if(o.material){ if(o.material.map)o.material.map.dispose(); o.material.dispose(); } }
   const verts=(local||[]).map(p=>new THREE.Vector3(p.x,p.y,p.z));
   const col=new THREE.Color(color||'#00d0ff');
-  const op=(opacity!=null?opacity:0.28);
-  if(verts.length>=3){
-    const pos=[];
-    for(let i=1;i<verts.length-1;i++){
-      pos.push(verts[0].x,verts[0].y,verts[0].z, verts[i].x,verts[i].y,verts[i].z, verts[i+1].x,verts[i+1].y,verts[i+1].z);
-    }
-    const fg=new THREE.BufferGeometry();
-    fg.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
-    const fm=new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:op, side:THREE.DoubleSide, depthWrite:false});
-    const fill=new THREE.Mesh(fg,fm); fill.userData.pathFill=true; g.add(fill);
-  }
+  const op=(opacity!=null?opacity:0.95);
+  // 塗りつぶしは無し。輪郭を「20cm幅の帯」として描く（駐車区画の白線のように）。
+  const HALF=0.1; // 線幅20cm → 半幅0.1m
   if(verts.length>=2){
-    const og=new THREE.BufferGeometry().setFromPoints([...verts, verts[0]]);
-    const om=new THREE.LineBasicMaterial({color:col, transparent:true, opacity:Math.min(1,op+0.55)});
-    const outline=new THREE.Line(og,om); outline.userData.pathOutline=true; g.add(outline);
+    // ポリゴン法線（最初の3点から推定。地面区画なら≈Y+）
+    let nrm=new THREE.Vector3(0,1,0);
+    if(verts.length>=3){
+      const a=new THREE.Vector3().subVectors(verts[1],verts[0]);
+      const b=new THREE.Vector3().subVectors(verts[2],verts[0]);
+      const c=new THREE.Vector3().crossVectors(a,b);
+      if(c.lengthSq()>1e-9) nrm=c.normalize();
+    }
+    const up=nrm.clone().multiplyScalar(0.02); // 地面とのZ-fight回避に法線方向へ微小オフセット
+    const pos=[]; const n=verts.length;
+    for(let i=0;i<n;i++){
+      const A=verts[i], B=verts[(i+1)%n]; // 閉ループ（最後→最初も結ぶ）
+      const dir=new THREE.Vector3().subVectors(B,A);
+      if(dir.lengthSq()<1e-9) continue;
+      dir.normalize();
+      const perp=new THREE.Vector3().crossVectors(dir,nrm).normalize().multiplyScalar(HALF);
+      const a1=A.clone().add(perp).add(up), a2=A.clone().sub(perp).add(up);
+      const b1=B.clone().add(perp).add(up), b2=B.clone().sub(perp).add(up);
+      pos.push(a1.x,a1.y,a1.z, a2.x,a2.y,a2.z, b1.x,b1.y,b1.z);
+      pos.push(b1.x,b1.y,b1.z, a2.x,a2.y,a2.z, b2.x,b2.y,b2.z);
+    }
+    const og=new THREE.BufferGeometry();
+    og.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+    const om=new THREE.MeshBasicMaterial({color:col, transparent:op<1, opacity:op, side:THREE.DoubleSide, depthWrite:false});
+    const band=new THREE.Mesh(og,om); band.userData.pathOutline=true; g.add(band);
   }
   // ラベルは local 重心に配置（点を動かすと中央に追従）
   let cx=0,cy=0,cz=0; const n=(local&&local.length)||1;
@@ -18113,7 +18127,7 @@ function _pathBuildHandles(L){
   if(!L || L.type!=='path' || !L.mesh || !L.pathPoints) return;
   _pathEditId=L.id;
   L.pathPoints.forEach((p,i)=>{
-    const m=new THREE.Mesh(new THREE.SphereGeometry(0.1,16,16), new THREE.MeshBasicMaterial({color:0xffd24a, depthTest:false}));
+    const m=new THREE.Mesh(new THREE.SphereGeometry(0.13,16,16), new THREE.MeshBasicMaterial({color:0xffd24a, depthTest:false}));
     m.renderOrder=9008; m.userData.pathHandle=i; scene.add(m); _pathHandles.push(m);
   });
   _pathRefreshHandles();
@@ -18134,7 +18148,7 @@ function _pathSyncHandles(){
 function _pathHandleAt(clientX, clientY){
   if(_pathEditId==null || !_pathHandles.length) return -1;
   const rect=canvas.getBoundingClientRect();
-  let best=-1, bestD=18;
+  let best=-1, bestD=24;
   for(let i=0;i<_pathHandles.length;i++){
     const v=_pathHandles[i].position.clone().project(camera);
     if(v.z>1) continue;
@@ -18178,7 +18192,7 @@ function _pathHint(on){
     if(!el){ el=document.createElement('div'); el.id='path-hint';
       el.style.cssText='position:fixed;top:64px;left:50%;transform:translateX(-50%);background:rgba(0,150,205,.94);color:#fff;padding:6px 16px;border-radius:20px;font-size:.78em;z-index:6000;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.45);white-space:nowrap';
       document.body.appendChild(el); }
-    el.textContent='🛣 パス: 4点を右クリック長押しで配置（押して位置を探り、離して確定 / 残り '+(4-_pathPts.length)+'）  ｜  Esc で中止';
+    el.textContent='🛣 パス: 4点を左クリック長押しで配置（押して位置を探り、離して確定 / 残り '+(4-_pathPts.length)+'）  ｜  Esc で中止';
     el.style.display='block';
   } else if(el){ el.style.display='none'; }
 }
@@ -18222,7 +18236,7 @@ function _finalizePath(){
   const world=_pathPts.slice(0,4);
   const C=new THREE.Vector3(); world.forEach(p=>C.add(p)); C.multiplyScalar(1/world.length);
   const local=world.map(p=>({x:p.x-C.x, y:p.y-C.y, z:p.z-C.z}));
-  const color='#00d0ff', opacity=0.28;
+  const color='#00d0ff', opacity=0.95;
   const group=_buildPathMesh(local, color, opacity, '');
   group.position.copy(C);
   const L=addLayer({name:'パス '+_nextLayerNameNumber('path'), type:'path', mesh:group, size:{x:1,y:1,z:1}});
@@ -18241,7 +18255,7 @@ window.addPathLayer=function(){
   _pathMode=true; _pathPts=[]; _clearPathTemp();
   document.addEventListener('keydown', _onPathKey, true);
   _pathHint(true);
-  showUndoToast('🛣 4点を右クリック長押しで配置（押している間プレビュー、離して確定 / Escで中止）');
+  showUndoToast('🛣 4点を左クリック長押しで配置（押している間プレビュー、離して確定 / Escで中止）');
 };
 
 window.setPathLabel=function(id, text){
@@ -18267,8 +18281,7 @@ window.setPathOpacity=function(id, val){
   const L=findLayer(id); if(!L||L.type!=='path') return;
   const op=parseFloat(val); L.pathOpacity=op;
   if(L.mesh) L.mesh.traverse(o=>{
-    if(o.material && o.userData.pathFill) o.material.opacity=op;
-    if(o.material && o.userData.pathOutline) o.material.opacity=Math.min(1,op+0.55);
+    if(o.material && o.userData.pathOutline){ o.material.opacity=op; o.material.transparent=op<1; }
   });
   if(typeof markDirty==='function') markDirty(6);
 };
@@ -19098,10 +19111,10 @@ canvas.addEventListener('mousedown',e=>{
   // active text input. This way memo fields don't keep eating shortcuts.
   const _ae = document.activeElement;
   if(_ae && (_ae.tagName === 'INPUT' || _ae.tagName === 'TEXTAREA')) _ae.blur();
-  // パス配置モード: 右クリック長押しで位置を探る（押している間プレビュー、離して確定）。
-  // 他ボタンは無視。右ボタンを横取りするのでこのモード中だけ視点回転は無効。
-  if(_pathMode){
-    if(e.button===2){ _pathProbing=true; _pathUpdateProbe(e.clientX,e.clientY); }
+  // パス配置モード: 左クリック長押しで位置を探る（押している間プレビュー、離して確定）。
+  // 右ボタンはこのモード中も視点回転に使える。
+  if(_pathMode && e.button===0){
+    _pathProbing=true; _pathUpdateProbe(e.clientX,e.clientY);
     e.preventDefault();
     return;
   }
@@ -19199,9 +19212,9 @@ canvas.addEventListener('mousedown',e=>{
 window.addEventListener('mouseup',e=>{
   // パス編集ハンドルのドラッグ終了
   if(_pathDragH>=0){ _pathDragH=-1; if(typeof markDirty==='function') markDirty(6); return; }
-  // パス配置: 右クリックを離したら、探っていた位置に点を確定
-  if(_pathMode){
-    if(e.button===2 && _pathProbing){ _placePathPoint(e.clientX,e.clientY); _pathHideProbe(); }
+  // パス配置: 左クリックを離したら、探っていた位置に点を確定（右は視点回転へ）
+  if(_pathMode && e.button===0){
+    if(_pathProbing){ _placePathPoint(e.clientX,e.clientY); _pathHideProbe(); }
     return;
   }
   if(e.button===2){
@@ -20142,7 +20155,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.33-alpha';
+const CURRENT_VERSION    = '0.0.34-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
