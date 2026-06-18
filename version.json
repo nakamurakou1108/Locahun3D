@@ -1,6 +1,6 @@
 {
-  "version": "0.0.30-alpha",
+  "version": "0.0.31-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "日照シミュレーションに実際の天気予報の参照を追加（オンライン時のみ）。天気セクションに『🌐 実際の天気予報を取得』ボタンを新設。選択中の場所(sun.lat/lng)・日付・時刻に対応する毎時予報を Open-Meteo（APIキー不要・CORS可・無料）から取得し、天気/気温/雲量/降水/風＋出典を参照表示。さらに既存の天気トグル(☀晴れ/☁曇り/🌧雨)を実際の予報に自動セットして光のムードも実天気に追従。時刻スクラブでその時刻の予報に追従、日付/場所変更で自動更新（キャッシュ sun._fc、updateSunMode にフック）。navigator.onLine でゲートし、オフライン時・予報範囲外（約16日先〜過去数か月外＝HTTP400）・取得失敗を明示メッセージで処理。実機(preview)で疎通・成功表示・天気自動適用・スクラブ追従・オフライン/範囲外メッセージを確認（東京・2026-06-18でOpen-Meteo到達確認）。WMO weather_code→clear/cloudy/rain マッピング内蔵。Builds on v0.0.29."
+  "notes": "アップデート機構の修正：file:// で保存したローカルコピーで『🔔 新版あり』を押しても最新版が落ちてこないバグを修正。原因は、版マニフェストの url（Cloudflare Worker）が信頼オリジン許可リスト(github系のみ)に無く、ダウンロード元が location.href（＝ユーザー自身の古いローカルHTML）にフォールバックしていたため。修正後は、版マニフェストと同じ GitHub リポジトリ（raw.githubusercontent.com・CORS対応）から最新の Locahun3D_OfflineViewer.html を取得してダウンロードする（file:// からも確実に取得可能、preview で疎通確認済 1.4MB）。注意：file:// の自己完結HTMLはブラウザの制約で『自分自身をディスク上で上書き』はできないため、ボタンは最新HTMLをダウンロードするところまで——ユーザーが手元のファイルへ上書き保存して更新する運用。Builds on v0.0.30."
 }

@@ -19996,7 +19996,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.30-alpha';
+const CURRENT_VERSION    = '0.0.31-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
@@ -20279,21 +20279,16 @@ window.reportBug = function(){
 // when the user clicks the "🔔 新版あり" button — they get the new
 // HTML in their Downloads folder so they can replace their local copy
 // without manually navigating to GitHub.
-async function _downloadLatestViewerHtml(target){
+async function _downloadLatestViewerHtml(){
+  // The latest HTML lives in the SAME GitHub repo as the version manifest, and
+  // raw.githubusercontent.com is CORS-enabled — so this fetch succeeds even
+  // from a file:// offline copy. (The previous code fell back to location.href
+  // when the manifest's url failed the origin allowlist, which on a file://
+  // copy just re-downloaded the user's OWN stale HTML — the "押しても更新され
+  // ない" bug.) Derive the HTML URL from the manifest URL so they stay in sync.
+  const htmlUrl = UPDATE_MANIFEST_URL.replace(/version\.json(?=$|[?#])/i, 'Locahun3D_OfflineViewer.html');
   try {
-    // Resolve the HTML source URL. Priority:
-    //   1. manifest's trusted url (when an offline-bundled HTML is
-    //      running against a remote update server).
-    //   2. location.href (when the running page IS the deployed HTML).
-    let src = (target && /^https?:/.test(target)) ? target : location.href;
-    // If the URL is a directory (ends with / or query / hash only),
-    // append the canonical HTML filename so we hit the actual file.
-    if(/\/(?:[?#].*)?$/.test(src) || !/Locahun3D_OfflineViewer\.html(?:[?#]|$)/i.test(src)){
-      // Strip trailing slash, then append the canonical file path.
-      const base = src.replace(/\/+$/,'');
-      src = base + '/Locahun3D_OfflineViewer.html';
-    }
-    const res = await fetch(src, { cache: 'no-store' });
+    const res = await fetch(htmlUrl, { cache: 'no-store' });
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const blob = await res.blob();
     const dl = document.createElement('a');
@@ -20305,16 +20300,18 @@ async function _downloadLatestViewerHtml(target){
     setTimeout(()=>URL.revokeObjectURL(dl.href), 5000);
     if(typeof showUndoToast === 'function'){
       showUndoToast(window._lang === 'en'
-        ? '⬇ Downloaded latest Locahun3D_OfflineViewer.html'
-        : '⬇ 最新版 Locahun3D_OfflineViewer.html をダウンロードしました');
+        ? '⬇ Downloaded the latest viewer — overwrite your local HTML file with it'
+        : '⬇ 最新版をダウンロードしました — お手元の HTML ファイルに上書き保存してください');
     }
     return true;
   } catch(e){
     console.warn('[update] HTML download failed:', e);
+    // Last resort: open the public releases page so the user can grab it manually.
+    try{ window.open(RELEASES_FALLBACK_URL, '_blank', 'noopener'); }catch(_){}
     if(typeof showUndoToast === 'function'){
       showUndoToast(window._lang === 'en'
-        ? '⚠ HTML download failed — opening release page instead'
-        : '⚠ HTML ダウンロード失敗 — リリースページを開きます');
+        ? '⚠ Download failed — opened the releases page instead'
+        : '⚠ ダウンロード失敗 — リリースページを開きました');
     }
     return false;
   }
@@ -20340,9 +20337,10 @@ window.checkForUpdate = async function(userInitiated){
           location.replace(u.toString());
         }catch(_){ location.reload(); }
       } else {
-        // Saved offline copy (file://): can't reload to a newer one, so download
-        // the fresh viewer HTML so the user can replace their local file.
-        _downloadLatestViewerHtml(_updateState.urlTrusted ? _updateState.url : null);
+        // Saved offline copy (file://): can't reload to a newer one (the browser
+        // can't overwrite a local file), so download the fresh viewer HTML from
+        // GitHub so the user can replace their local copy.
+        _downloadLatestViewerHtml();
       }
     }
     return;
