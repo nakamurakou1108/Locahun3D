@@ -1,6 +1,6 @@
 {
-  "version": "0.0.29-alpha",
+  "version": "0.0.30-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "New object type: パス (Path). Added 🛣 パス to the オブジェクト追加 menu. Selecting it enters a placement mode where you left-click 4 points in order on the scene (markers + live outline shown; right-drag still rotates the view; Esc cancels). After the 4th point the quad auto-closes into a translucent filled region + outline — intended for marking parking bays etc. From the object-info panel you can set the region color, opacity, and a 中央テキスト (center text) that renders as a billboard label at the polygon centroid (e.g. 来客用 P1). New layer type 'path' with pathPoints (centroid-local) + pathLabel + pathColor + pathOpacity, stored relative to the centroid so move/rotate/scale work via the normal transform panel. Persisted in both project serializers and rebuilt on restore. Verified end-to-end in-app: place→auto-close, label/color/opacity controls, and full save→restore roundtrip (4 pts, label, color, opacity, fill+outline+label sprite all reproduced). Reuses pickWorldPos (raycast onto the splat surface) + the sun-label CanvasTexture sprite pattern. Builds on v0.0.28."
+  "notes": "日照シミュレーションに実際の天気予報の参照を追加（オンライン時のみ）。天気セクションに『🌐 実際の天気予報を取得』ボタンを新設。選択中の場所(sun.lat/lng)・日付・時刻に対応する毎時予報を Open-Meteo（APIキー不要・CORS可・無料）から取得し、天気/気温/雲量/降水/風＋出典を参照表示。さらに既存の天気トグル(☀晴れ/☁曇り/🌧雨)を実際の予報に自動セットして光のムードも実天気に追従。時刻スクラブでその時刻の予報に追従、日付/場所変更で自動更新（キャッシュ sun._fc、updateSunMode にフック）。navigator.onLine でゲートし、オフライン時・予報範囲外（約16日先〜過去数か月外＝HTTP400）・取得失敗を明示メッセージで処理。実機(preview)で疎通・成功表示・天気自動適用・スクラブ追従・オフライン/範囲外メッセージを確認（東京・2026-06-18でOpen-Meteo到達確認）。WMO weather_code→clear/cloudy/rain マッピング内蔵。Builds on v0.0.29."
 }

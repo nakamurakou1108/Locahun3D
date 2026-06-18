@@ -1360,6 +1360,9 @@ body.immersive #immersive-exit{ display:inline-block; }
     <button class="sun-wx-btn" data-wx="cloudy" id="sun-wx-cloudy" data-i18n="sun-wx-cloudy" onclick="onSunWeather('cloudy')">☁ 曇り</button>
     <button class="sun-wx-btn" data-wx="rain"   id="sun-wx-rain"   data-i18n="sun-wx-rain"   onclick="onSunWeather('rain')">🌧 雨</button>
   </div>
+  <!-- 実際の天気予報 (Open-Meteo, オンライン時のみ) -->
+  <button id="sun-fetch-wx" onclick="fetchSunForecast()" title="選択中の場所・日付・時刻の実際の天気予報を読み込み、上の天気を自動設定します（インターネット接続が必要）" style="width:100%;margin-bottom:6px;background:rgba(120,180,255,.16);border:1px solid rgba(120,180,255,.4);color:#bdf;border-radius:6px;padding:5px 8px;font-size:.85em;cursor:pointer">🌐 実際の天気予報を取得（オンライン時）</button>
+  <div id="sun-forecast" style="display:none;background:rgba(120,180,255,.08);border:1px solid rgba(120,180,255,.22);border-radius:6px;padding:6px 9px;font-size:.88em;margin-bottom:10px;line-height:1.4"></div>
 
   <!-- 日付 (カスタムカレンダー) -->
   <div class="sun-sec-lbl" id="sun-l-date" data-i18n="sun-l-date">📅 日付</div>
@@ -4237,6 +4240,9 @@ function updateSunMode(){
   applySceneTint();
   _sunUpdateReadout(altDeg, w.az, times);
   _sunVizUpdate(dir, times);   // 3D コンパス＋太陽軌道を更新
+  // 実天気予報を取得済みなら、現在の日付/場所/時刻に合わせて参照表示を更新
+  // （日付や場所が変わればキー不一致で自動的に隠れる）。天気の自動適用はしない。
+  if(typeof _sunFcReadout==='function') _sunFcReadout(false);
   markDirty(6);
 }
 
@@ -4336,6 +4342,92 @@ window.sunSetNow = function(){
   const n=new Date(); sun.y=n.getFullYear(); sun.mo=n.getMonth()+1; sun.d=n.getDate();
   sun.timeMin=Math.min(1430, Math.round((n.getHours()*60+n.getMinutes())/10)*10);
   _sunSyncForm(); updateSunMode();
+};
+
+// ══════════════════════════════════════════════════
+//  実際の天気予報 (Open-Meteo・APIキー不要・CORS可・オンライン時のみ)
+// ══════════════════════════════════════════════════
+// 日照シミュの場所(sun.lat/lng)＋選択日付の毎時予報を取得し、選択時刻に応じた
+// 天気/気温/雲量/降水/風を参照表示。さらに既存の天気トグル(clear/cloudy/rain)を
+// 実際の予報に自動セットして光のムードも実天気に追従させる。キャッシュは sun._fc。
+const _WMO_WX={
+  0:{l:'快晴',e:'☀',wx:'clear'},1:{l:'晴れ',e:'🌤',wx:'clear'},
+  2:{l:'晴れ時々曇り',e:'⛅',wx:'cloudy'},3:{l:'曇り',e:'☁',wx:'cloudy'},
+  45:{l:'霧',e:'🌫',wx:'cloudy'},48:{l:'霧氷',e:'🌫',wx:'cloudy'},
+  51:{l:'霧雨(弱)',e:'🌦',wx:'rain'},53:{l:'霧雨',e:'🌦',wx:'rain'},55:{l:'霧雨(強)',e:'🌧',wx:'rain'},
+  56:{l:'着氷性霧雨',e:'🌧',wx:'rain'},57:{l:'着氷性霧雨(強)',e:'🌧',wx:'rain'},
+  61:{l:'雨(弱)',e:'🌦',wx:'rain'},63:{l:'雨',e:'🌧',wx:'rain'},65:{l:'雨(強)',e:'🌧',wx:'rain'},
+  66:{l:'着氷性の雨',e:'🌧',wx:'rain'},67:{l:'着氷性の雨(強)',e:'🌧',wx:'rain'},
+  71:{l:'雪(弱)',e:'🌨',wx:'cloudy'},73:{l:'雪',e:'🌨',wx:'cloudy'},75:{l:'雪(強)',e:'❄',wx:'cloudy'},77:{l:'霧雪',e:'🌨',wx:'cloudy'},
+  80:{l:'にわか雨(弱)',e:'🌦',wx:'rain'},81:{l:'にわか雨',e:'🌧',wx:'rain'},82:{l:'にわか雨(激)',e:'⛈',wx:'rain'},
+  85:{l:'にわか雪',e:'🌨',wx:'cloudy'},86:{l:'にわか雪(強)',e:'🌨',wx:'cloudy'},
+  95:{l:'雷雨',e:'⛈',wx:'rain'},96:{l:'雷雨(雹)',e:'⛈',wx:'rain'},99:{l:'雷雨(雹/激)',e:'⛈',wx:'rain'},
+};
+function _wmoWx(code){ return _WMO_WX[code] || {l:'天気不明('+code+')',e:'🌡',wx:'cloudy'}; }
+function _sunDateStr(){ return sun.y+'-'+String(sun.mo).padStart(2,'0')+'-'+String(sun.d).padStart(2,'0'); }
+function _sunFcKey(){ return _sunDateStr()+'@'+sun.lat.toFixed(2)+','+sun.lng.toFixed(2); }
+function _sunFcShow(html, on){ const el=document.getElementById('sun-forecast'); if(!el) return; el.innerHTML=html; el.style.display=on?'block':'none'; }
+
+// キャッシュ済み予報から、現在の日付/場所/時刻に対応する行を表示。
+// applyWeather=true のとき天気トグル(clear/cloudy/rain)も実天気に合わせる。
+function _sunFcReadout(applyWeather){
+  const fc=sun._fc;
+  if(!fc || !fc.hourly) return;
+  if(fc.key!==_sunFcKey()){ _sunFcShow('', false); return; }   // 別の日/場所のキャッシュ → 隠す
+  const h=Math.max(0,Math.min(23, Math.round(sun.timeMin/60)));
+  const hh=fc.hourly;
+  const code=(hh.weather_code&&hh.weather_code[h]!=null)?hh.weather_code[h]:null;
+  if(code==null) return;
+  const w=_wmoWx(code);
+  const t =(hh.temperature_2m&&hh.temperature_2m[h]!=null)?Math.round(hh.temperature_2m[h]):null;
+  const cc=(hh.cloud_cover&&hh.cloud_cover[h]!=null)?Math.round(hh.cloud_cover[h]):null;
+  const pr=(hh.precipitation&&hh.precipitation[h]!=null)?hh.precipitation[h]:null;
+  const ws=(hh.wind_speed_10m&&hh.wind_speed_10m[h]!=null)?Math.round(hh.wind_speed_10m[h]):null;
+  const place=SUN_CITIES[sun.city]?(window._lang==='en'?SUN_CITIES[sun.city].en:SUN_CITIES[sun.city].ja):'';
+  _sunFcShow(
+    '<div style="font-weight:600;color:#cfe;font-size:1.05em">'+w.e+' '+w.l+(t!=null?'　'+t+'°C':'')+'</div>'+
+    '<div style="color:#9bd;margin-top:1px">'+(cc!=null?'雲量 '+cc+'%　':'')+(pr!=null?'降水 '+pr+'mm　':'')+(ws!=null?'風 '+ws+'km/h':'')+'</div>'+
+    '<div style="color:#7a8aa0;font-size:.9em;margin-top:2px">'+place+' '+_sunDateStr()+' '+String(h).padStart(2,'0')+':00 ｜ Open-Meteo</div>',
+    true);
+  if(applyWeather && typeof window.onSunWeather==='function') window.onSunWeather(w.wx);
+}
+
+window.fetchSunForecast = async function(){
+  const btn=document.getElementById('sun-fetch-wx');
+  if(typeof navigator!=='undefined' && navigator.onLine===false){
+    _sunFcShow('⚠ オフラインです。天気予報の取得にはインターネット接続が必要です。', true);
+    return;
+  }
+  const dstr=_sunDateStr(), key=_sunFcKey();
+  if(btn) btn.disabled=true;
+  _sunFcShow('🌐 取得中…', true);
+  try{
+    const url='https://api.open-meteo.com/v1/forecast?latitude='+sun.lat+'&longitude='+sun.lng+
+      '&hourly=temperature_2m,weather_code,cloud_cover,precipitation,wind_speed_10m&timezone=auto&start_date='+dstr+'&end_date='+dstr;
+    const r=await fetch(url, {mode:'cors'});
+    if(!r.ok){
+      let reason='';
+      try{ const ej=await r.json(); reason=(ej&&ej.reason)?ej.reason:''; }catch(_){}
+      if(r.status===400 || /range|out of|date/i.test(reason)){
+        _sunFcShow('⚠ この日付は予報の対象範囲外です（天気予報は約16日先まで、過去は数か月前まで）。', true);
+      } else {
+        _sunFcShow('⚠ 予報の取得に失敗しました（HTTP '+r.status+(reason?'：'+reason:'')+'）。', true);
+      }
+      sun._fc=null; return;
+    }
+    const j=await r.json();
+    if(!j.hourly || !j.hourly.weather_code || !j.hourly.weather_code.length){
+      _sunFcShow('⚠ この日付の予報データがありません（予報は約16日先まで、過去は数か月前まで）。', true);
+      sun._fc=null; return;
+    }
+    sun._fc={key:key, hourly:j.hourly};
+    _sunFcReadout(true);   // 現在時刻の予報を表示＋天気を自動適用
+  }catch(e){
+    _sunFcShow('⚠ 予報の取得に失敗しました（'+((e&&e.message)||e)+'）。接続環境をご確認ください。', true);
+    sun._fc=null;
+  }finally{
+    if(btn) btn.disabled=false;
+  }
 };
 
 // ── カスタムカレンダー ──
@@ -19904,7 +19996,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.29-alpha';
+const CURRENT_VERSION    = '0.0.30-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
