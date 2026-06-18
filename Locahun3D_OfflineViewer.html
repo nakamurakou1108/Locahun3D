@@ -1549,6 +1549,8 @@ body.immersive #immersive-exit{ display:inline-block; }
       <button onclick="addEventLayer();window.closeObjTypeMenuTop()" style="background:rgba(255,170,68,.06);border:1px solid rgba(255,170,68,.15);color:#C0C0C0;border-radius:5px;padding:7px 14px;cursor:pointer;font-size:.8em;text-align:left;width:100%;white-space:nowrap;transition:background .15s;" onmouseover="this.style.background='rgba(255,170,68,.18)'" onmouseout="this.style.background='rgba(255,170,68,.06)'">🟠 <span id="obj-add-event">Event (イベント)</span></button>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:2px 0"></div>
       <button onclick="addFigureLayer();window.closeObjTypeMenuTop()" style="background:rgba(255,140,200,.06);border:1px solid rgba(255,140,200,.18);color:#C0C0C0;border-radius:5px;padding:7px 14px;cursor:pointer;font-size:.8em;text-align:left;width:100%;white-space:nowrap;transition:background .15s;" onmouseover="this.style.background='rgba(255,140,200,.20)'" onmouseout="this.style.background='rgba(255,140,200,.06)'" title="フィギュア追加（リグ付き人型モデル）">👤 <span id="lbl-addfig-top">フィギュア (人型リグ)</span></button>
+      <div style="border-top:1px solid rgba(255,255,255,.07);margin:2px 0"></div>
+      <button onclick="addPathLayer();window.closeObjTypeMenuTop()" style="background:rgba(100,200,255,.06);border:1px solid rgba(100,200,255,.16);color:#C0C0C0;border-radius:5px;padding:7px 14px;cursor:pointer;font-size:.8em;text-align:left;width:100%;white-space:nowrap;transition:background .15s;" onmouseover="this.style.background='rgba(100,200,255,.18)'" onmouseout="this.style.background='rgba(100,200,255,.06)'" title="4点を左クリックで囲んで区画を作成（駐車スペース等）。中央にテキストを表示できます">🛣 <span id="obj-add-path">パス (区画＋ラベル)</span></button>
       <!-- Sphere (球体) and Light (ライト) entries removed per user request.
            addSphereLayer / addLightLayer remain as window.* functions for
            programmatic use (e.g. ZIP project restore) but are no longer
@@ -12636,7 +12638,7 @@ window.addEventListener('popstate', ()=>{
   }
 });
 
-const LAYER_ICONS={ splat:'✨', obj:'📐', cube:'📦', sphere:'⚽', folder:'📁', light:'💡', event:'🟠', figure:'👤', camera:'🎥' };
+const LAYER_ICONS={ splat:'✨', obj:'📐', cube:'📦', sphere:'⚽', folder:'📁', light:'💡', event:'🟠', figure:'👤', camera:'🎥', path:'🛣' };
 
 // ── Per-layer Splat axis-flip (180° rotation around X / Y / Z, composable) ──
 const FLIP_QUATS = {
@@ -13193,6 +13195,20 @@ function renderTransformPanel(){
     evH += '</div>';
     evH += '</div>';
     el.innerHTML += evH;
+  }
+  // ── Path: color / opacity / center label ──
+  if(L.type==='path'){
+    let ph='<div style="margin-top:8px;padding:6px 5px;background:rgba(255,255,255,.03);border-radius:5px;border:1px solid rgba(255,255,255,.07)">';
+    ph+='<div style="font-size:.7em;color:#606060;margin-bottom:4px">🛣 パス情報</div>';
+    ph+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+    ph+='<input type="color" value="'+(L.pathColor||'#00d0ff')+'" oninput="setPathColor('+L.id+',this.value)" style="width:36px;height:22px;padding:1px;border:1px solid rgba(255,255,255,.2);background:#1a1a00;border-radius:3px;cursor:pointer">';
+    ph+='<span style="font-size:.68em;color:#909090;width:auto">不透明度</span>';
+    ph+='<input type="range" min="0" max="1" step="0.05" value="'+(L.pathOpacity!=null?L.pathOpacity:0.28)+'" oninput="setPathOpacity('+L.id+',this.value)" style="flex:1;height:4px;accent-color:#D8D8D8">';
+    ph+='</div>';
+    ph+='<div style="font-size:.7em;color:#606060;margin-bottom:3px">🅿 中央テキスト</div>';
+    ph+='<textarea rows="2" style="width:100%;background:#2A2A2C;border:1px solid rgba(255,255,255,.1);color:#C0C0C0;border-radius:4px;padding:4px 6px;font-size:.72em;resize:vertical;box-sizing:border-box;outline:none;font-family:inherit" oninput="window.setPathLabel('+L.id+',this.value)" placeholder="例: 来客用 P1 / 搬入車両 ...">'+(L.pathLabel||'')+'</textarea>';
+    ph+='</div>';
+    el.innerHTML += ph;
   }
   // ── 変換パネルの数値入力: 右クリック → 0 リセット ──
   el.querySelectorAll('input[type=number]').forEach(inp=>{
@@ -17034,6 +17050,12 @@ window.saveProjectZip = async function(){
         entry.eventImageName=L.eventImageName||null;
         entry.eventGuide=L.eventGuide||null;
       }
+      if(L.type==='path'){
+        entry.pathPoints=L.pathPoints?L.pathPoints.map(p=>({...p})):[];
+        entry.pathLabel=L.pathLabel||'';
+        entry.pathColor=L.pathColor||'#00d0ff';
+        entry.pathOpacity=L.pathOpacity!=null?L.pathOpacity:0.28;
+      }
       serialized.push(entry);
     }
 
@@ -17315,6 +17337,11 @@ window.saveProject = async function() {
         } else {
           entry.missing=true;
         }
+      } else if(L.type==='path'){
+        entry.pathPoints=L.pathPoints?L.pathPoints.map(p=>({...p})):[];
+        entry.pathLabel=L.pathLabel||'';
+        entry.pathColor=L.pathColor||'#00d0ff';
+        entry.pathOpacity=L.pathOpacity!=null?L.pathOpacity:0.28;
       }
       serialized.push(entry);
     }
@@ -17595,6 +17622,8 @@ async function restoreProject(project) {
       const r = await window._restoreFigureFromEntry(entry);
       mesh = r.root;
       mesh.userData.__figureRig = r;
+    } else if(entry.type==='path'){
+      mesh=_buildPathMesh(entry.pathPoints||[], entry.pathColor||'#00d0ff', entry.pathOpacity!=null?entry.pathOpacity:0.28, entry.pathLabel||'');
     }
 
     const L={
@@ -17648,6 +17677,13 @@ async function restoreProject(project) {
       L.eventImage=entry.eventImage||null;
       L.eventImageName=entry.eventImageName||null;
       L.eventGuide=entry.eventGuide||null;
+    }
+    if(entry.type==='path'){
+      L.pathPoints=entry.pathPoints?entry.pathPoints.map(p=>({...p})):[];
+      L.pathLabel=entry.pathLabel||'';
+      L.pathColor=entry.pathColor||'#00d0ff';
+      L.pathOpacity=entry.pathOpacity!=null?entry.pathOpacity:0.28;
+      L.pathLabelSprite=(mesh&&mesh.userData)?mesh.userData.pathLabelSprite:null;
     }
     if(entry.type==='figure' && mesh && mesh.userData.__figureRig){
       const fr = mesh.userData.__figureRig;
@@ -17854,6 +17890,158 @@ window.addEventLayer = function(posHint){
   L.eventImage=null; L.eventImageName=null;
   selectLayer(L.id);
   showUndoToast(T('ev-added'));
+};
+
+// ══════════════════════════════════════════════════
+//  PATH OBJECT (4-point closed region + center label)
+// ══════════════════════════════════════════════════
+// オブジェクト追加 → 🛣パス で配置モードに入り、左クリックで4点を順に置く。
+// 4点目で四角形が閉じ、半透明の塗り＋輪郭の区画になる（駐車スペース等）。
+// 中央のビルボード文字（オブジェクト情報で入力）に「来客用」等を表示できる。
+let _pathMode=false, _pathPts=[], _pathMarkers=[], _pathPreviewLine=null;
+let _pathClickX=0, _pathClickY=0;
+
+function _makePathLabelSprite(text, color){
+  const W=512, H=128;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const x=cv.getContext('2d');
+  if(text){
+    x.font='bold 60px sans-serif'; x.textAlign='center'; x.textBaseline='middle';
+    const tw=Math.min(W-12, x.measureText(text).width+44);
+    x.fillStyle='rgba(0,0,0,.55)'; x.fillRect((W-tw)/2, H/2-42, tw, 84);
+    x.lineWidth=4; x.strokeStyle=color||'#00d0ff'; x.strokeRect((W-tw)/2, H/2-42, tw, 84);
+    x.fillStyle='#ffffff'; x.fillText(text, W/2, H/2+2);
+  }
+  const tex=new THREE.CanvasTexture(cv); tex.needsUpdate=true;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex, depthTest:false, depthWrite:false, transparent:true}));
+  sp.renderOrder=9006; sp.scale.set(2.4, 0.6, 1);
+  sp.userData.isPathLabel=true; sp.visible=!!text;
+  return sp;
+}
+
+function _buildPathMesh(local, color, opacity, labelText){
+  const g=new THREE.Group(); g.userData.isPath=true;
+  const verts=(local||[]).map(p=>new THREE.Vector3(p.x,p.y,p.z));
+  const col=new THREE.Color(color||'#00d0ff');
+  const op=(opacity!=null?opacity:0.28);
+  if(verts.length>=3){
+    const pos=[];
+    for(let i=1;i<verts.length-1;i++){
+      pos.push(verts[0].x,verts[0].y,verts[0].z, verts[i].x,verts[i].y,verts[i].z, verts[i+1].x,verts[i+1].y,verts[i+1].z);
+    }
+    const fg=new THREE.BufferGeometry();
+    fg.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+    const fm=new THREE.MeshBasicMaterial({color:col, transparent:true, opacity:op, side:THREE.DoubleSide, depthWrite:false});
+    const fill=new THREE.Mesh(fg,fm); fill.userData.pathFill=true; g.add(fill);
+  }
+  if(verts.length>=2){
+    const og=new THREE.BufferGeometry().setFromPoints([...verts, verts[0]]);
+    const om=new THREE.LineBasicMaterial({color:col, transparent:true, opacity:Math.min(1,op+0.55)});
+    const outline=new THREE.Line(og,om); outline.userData.pathOutline=true; g.add(outline);
+  }
+  const sp=_makePathLabelSprite(labelText||'', color);
+  sp.position.set(0,0.2,0); g.add(sp); g.userData.pathLabelSprite=sp;
+  return g;
+}
+
+function _pathHint(on){
+  let el=document.getElementById('path-hint');
+  if(on){
+    if(!el){ el=document.createElement('div'); el.id='path-hint';
+      el.style.cssText='position:fixed;top:64px;left:50%;transform:translateX(-50%);background:rgba(0,150,205,.94);color:#fff;padding:6px 16px;border-radius:20px;font-size:.78em;z-index:6000;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.45);white-space:nowrap';
+      document.body.appendChild(el); }
+    el.textContent='🛣 パス: 4点を左クリックで配置（残り '+(4-_pathPts.length)+'）  ｜  Esc で中止';
+    el.style.display='block';
+  } else if(el){ el.style.display='none'; }
+}
+
+function _clearPathTemp(){
+  _pathMarkers.forEach(m=>{ scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+  _pathMarkers=[];
+  if(_pathPreviewLine){ scene.remove(_pathPreviewLine); _pathPreviewLine.geometry.dispose(); _pathPreviewLine.material.dispose(); _pathPreviewLine=null; }
+}
+
+function _redrawPathTempLine(){
+  if(_pathPreviewLine){ scene.remove(_pathPreviewLine); _pathPreviewLine.geometry.dispose(); _pathPreviewLine.material.dispose(); _pathPreviewLine=null; }
+  if(_pathPts.length>=2){
+    const g=new THREE.BufferGeometry().setFromPoints(_pathPts);
+    _pathPreviewLine=new THREE.Line(g, new THREE.LineBasicMaterial({color:0x00d0ff, depthTest:false, transparent:true, opacity:.95}));
+    _pathPreviewLine.renderOrder=9005; scene.add(_pathPreviewLine);
+  }
+}
+
+function _onPathKey(e){ if(e.key==='Escape'){ e.preventDefault(); _cancelPath(); } }
+
+function _cancelPath(){
+  _pathMode=false; _clearPathTemp(); _pathPts=[]; _pathHint(false);
+  document.removeEventListener('keydown', _onPathKey, true);
+  if(typeof markDirty==='function') markDirty(6);
+}
+
+function _placePathPoint(clientX, clientY){
+  if(!_pathMode) return;
+  const p=pickWorldPos(clientX, clientY); if(!p) return;
+  _pathPts.push(p.clone());
+  const m=new THREE.Mesh(new THREE.SphereGeometry(0.07,12,12), new THREE.MeshBasicMaterial({color:0x00d0ff, depthTest:false}));
+  m.renderOrder=9006; m.position.copy(p); scene.add(m); _pathMarkers.push(m);
+  _redrawPathTempLine();
+  _pathHint(true);
+  if(typeof markDirty==='function') markDirty(6);
+  if(_pathPts.length>=4) _finalizePath();
+}
+
+function _finalizePath(){
+  const world=_pathPts.slice(0,4);
+  const C=new THREE.Vector3(); world.forEach(p=>C.add(p)); C.multiplyScalar(1/world.length);
+  const local=world.map(p=>({x:p.x-C.x, y:p.y-C.y, z:p.z-C.z}));
+  const color='#00d0ff', opacity=0.28;
+  const group=_buildPathMesh(local, color, opacity, '');
+  group.position.copy(C);
+  const L=addLayer({name:'パス '+_nextLayerNameNumber('path'), type:'path', mesh:group, size:{x:1,y:1,z:1}});
+  L.pos={x:C.x,y:C.y,z:C.z}; L.rot={x:0,y:0,z:0}; L.scale={x:1,y:1,z:1};
+  L.pathPoints=local; L.pathLabel=''; L.pathColor=color; L.pathOpacity=opacity;
+  L.pathLabelSprite=group.userData.pathLabelSprite;
+  _cancelPath();
+  selectLayer(L.id);
+  showUndoToast('🛣 パスを作成しました — オブジェクト情報でテキストを入力できます');
+}
+
+window.addPathLayer=function(){
+  if(_pathMode){ _cancelPath(); return; }
+  if(typeof closeAllPanels==='function') closeAllPanels();
+  _pathMode=true; _pathPts=[]; _clearPathTemp();
+  document.addEventListener('keydown', _onPathKey, true);
+  _pathHint(true);
+  showUndoToast('🛣 4点を左クリックで配置してください（Escで中止）');
+};
+
+window.setPathLabel=function(id, text){
+  const L=findLayer(id); if(!L||L.type!=='path') return;
+  L.pathLabel=text;
+  const old=L.pathLabelSprite;
+  const parent=(old&&old.parent)?old.parent:L.mesh;
+  const ns=_makePathLabelSprite(text, L.pathColor||'#00d0ff');
+  if(old){ ns.position.copy(old.position); parent.remove(old); if(old.material.map) old.material.map.dispose(); old.material.dispose(); }
+  else ns.position.set(0,0.2,0);
+  parent.add(ns); L.pathLabelSprite=ns; if(L.mesh) L.mesh.userData.pathLabelSprite=ns;
+  if(typeof markDirty==='function') markDirty(6);
+};
+
+window.setPathColor=function(id, hex){
+  const L=findLayer(id); if(!L||L.type!=='path') return;
+  L.pathColor=hex;
+  if(L.mesh) L.mesh.traverse(o=>{ if(o.material && (o.userData.pathFill||o.userData.pathOutline)) o.material.color.set(hex); });
+  if(typeof markDirty==='function') markDirty(6);
+};
+
+window.setPathOpacity=function(id, val){
+  const L=findLayer(id); if(!L||L.type!=='path') return;
+  const op=parseFloat(val); L.pathOpacity=op;
+  if(L.mesh) L.mesh.traverse(o=>{
+    if(o.material && o.userData.pathFill) o.material.opacity=op;
+    if(o.material && o.userData.pathOutline) o.material.opacity=Math.min(1,op+0.55);
+  });
+  if(typeof markDirty==='function') markDirty(6);
 };
 
 window.importEventImage = function(id){
@@ -18681,6 +18869,13 @@ canvas.addEventListener('mousedown',e=>{
   // active text input. This way memo fields don't keep eating shortcuts.
   const _ae = document.activeElement;
   if(_ae && (_ae.tagName === 'INPUT' || _ae.tagName === 'TEXTAREA')) _ae.blur();
+  // Path placement mode: LEFT click places a point (handled on mouseup so a
+  // tiny drag doesn't misfire). RIGHT button still falls through to view-rotate.
+  if(_pathMode && e.button===0){
+    _pathClickX=e.clientX; _pathClickY=e.clientY;
+    e.preventDefault();
+    return;
+  }
   if(e.button===2){
     // RIGHT button = view-rotation drag (in any mode).
     e.preventDefault();
@@ -18768,6 +18963,12 @@ canvas.addEventListener('mousedown',e=>{
   }
 });
 window.addEventListener('mouseup',e=>{
+  // Path placement: commit a point on left-release if it was a click (not a drag).
+  if(_pathMode && e.button===0){
+    const moved=Math.hypot(e.clientX-_pathClickX, e.clientY-_pathClickY);
+    if(moved<6) _placePathPoint(e.clientX, e.clientY);
+    return;
+  }
   if(e.button===2){
     // End right-drag view rotation
     if(dragOn) dragOn = false;
@@ -19703,7 +19904,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.28-alpha';
+const CURRENT_VERSION    = '0.0.29-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 

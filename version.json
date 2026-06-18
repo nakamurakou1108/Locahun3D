@@ -1,6 +1,6 @@
 {
-  "version": "0.0.28-alpha",
+  "version": "0.0.29-alpha",
   "url": "https://locahun3d.nakamurakou1108.workers.dev",
   "sha256": null,
-  "notes": "Relocated the 🎥 camera-save button. It used to sit in the top-right view toolbar (next to カメラリセット / アニメーション); it now lives in the scene-layer panel footer, immediately to the right of 読み込み / 書き出し. The footer is now a 3-column grid and the label was shortened to カメラ保存 / Save Cam so all three fit (verified: 87px cells, no overflow on a 285px panel). The button keeps id=btnSaveCamera and saveCameraLayer(), so phone-hide, tooltip mapping and i18n are unchanged; clicking it still creates a Camera folder + camera layer. Builds on v0.0.27."
+  "notes": "New object type: パス (Path). Added 🛣 パス to the オブジェクト追加 menu. Selecting it enters a placement mode where you left-click 4 points in order on the scene (markers + live outline shown; right-drag still rotates the view; Esc cancels). After the 4th point the quad auto-closes into a translucent filled region + outline — intended for marking parking bays etc. From the object-info panel you can set the region color, opacity, and a 中央テキスト (center text) that renders as a billboard label at the polygon centroid (e.g. 来客用 P1). New layer type 'path' with pathPoints (centroid-local) + pathLabel + pathColor + pathOpacity, stored relative to the centroid so move/rotate/scale work via the normal transform panel. Persisted in both project serializers and rebuilt on restore. Verified end-to-end in-app: place→auto-close, label/color/opacity controls, and full save→restore roundtrip (4 pts, label, color, opacity, fill+outline+label sprite all reproduced). Reuses pickWorldPos (raycast onto the splat surface) + the sun-label CanvasTexture sprite pattern. Builds on v0.0.28."
 }
