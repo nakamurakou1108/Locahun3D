@@ -3291,9 +3291,14 @@ function _trySelectByClick(clientX, clientY){
       window.selectLayer(hitLayerId);
     }
   } else {
-    // Clicked on empty space — deselect
-    // (optional: only deselect if no pivot handle was near)
-    // selectedLayerId = null; renderLayerList(); renderTransformPanel();
+    // Clicked on empty space — deselect so the pivot/handles disappear.
+    if(selectedLayerId != null){
+      selectedLayerId = null;
+      if(window.selectedLayerIds) window.selectedLayerIds.clear();
+      renderLayerList(); renderTransformPanel();
+      if(typeof _pathSyncHandles==='function') _pathSyncHandles();
+      markDirty(6);
+    }
   }
 }
 let fpsT = 0, fpsN = 0;
@@ -15579,6 +15584,7 @@ function animate(now) {
   // Layer pivot gizmo only matters when a non-splat / non-folder layer is
   // selected. Skip the findLayer call entirely when nothing is selected.
   if(selectedLayerId != null) updateLayerPivot();
+  else if(typeof lpv !== 'undefined' && lpv.group && lpv.group.visible) lpv.group.visible=false; // 選択が外れたらギズモを確実に消す
   // Figure-related per-frame updates: gated on the active-figure count.
   // The count is 0 in the common case (no figure has been added) so we
   // skip findLayer + layers[] iteration every frame.
@@ -20155,7 +20161,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.0.36-alpha';
+const CURRENT_VERSION    = '0.0.37-alpha';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
