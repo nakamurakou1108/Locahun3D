@@ -894,7 +894,9 @@ body{position:fixed;top:0;left:0;}
   /* 文字サイズを4パネルで統一（.78em等→.68em） */
   #sun-panel, #cam-panel, #quality-panel, #gizmo{ font-size:.68em !important; }
   /* 横幅を画面に収まるよう縮小（端から最低24pxの余白を確保） */
-  #sun-panel{ width:min(236px, calc(100vw - 24px)) !important; padding:10px !important; }
+  /* 日照パネルはさらに一段小さく（user request 2026-06-19「もう少し小さく」）。
+     font .68→.6em／幅も縮小／パディング圧縮。 */
+  #sun-panel{ font-size:.6em !important; width:min(212px, calc(100vw - 24px)) !important; padding:9px !important; }
   #cam-panel{ width:min(238px, 82vw) !important; padding:10px 11px !important; }
   #quality-panel{ width:min(206px, calc(100vw - 24px)) !important; padding:9px 11px !important; }
   #gizmo{ width:min(230px, calc(100vw - 24px)) !important; padding:10px 12px !important; }
@@ -1102,9 +1104,21 @@ body{position:fixed;top:0;left:0;}
      row INSIDE the topbar; here we keep the generic "flush against
      topbar bottom" placement so other small-screen devices still get
      a sane fallback layout. */
-  /* 上の隙間を半分に（user request 2026-06-19: top:30px→15px）。トップバー
-     直下のデッドスペースを詰めて上UI群を画面上端寄りに。 */
-  #view-tl-btns{top:15px;gap:5px;padding-top:2px;}
+  /* 上のデッドスペースを解消（user request 2026-06-19）。
+     ★重要: #view-tl-btns はインラインに top:57px を持つ（specificity 1-0-0-0）。
+     !important 無しの `#view-tl-btns{top:..}`(0-1-0-0) はインラインに負けて
+     一切効かない＝以前の top:30/15px は反映されていなかった。スマホの #topbar は
+     高さ30px なので、トップバー直下に詰める top:34px を !important で適用する
+     （15px だと30pxのトップバーに被るため不可）。
+     ★z-index:120: 日照(91)/画質(95)/測定・カメラツール(60)パネルより上に出し、
+     パネルを開いても上部ボタン（特に AR）が常にタップできるようにする
+     （user report 2026-06: パネルに覆われて AR が押せない＝「使えなくなってる」）。 */
+  #view-tl-btns{top:34px !important;gap:5px;padding-top:2px;z-index:120 !important;}
+  /* スマホは上部ボタンをアイコンのみに（混雑・被り緩和＋小型化）。長いラベル
+     「カメラリセット」「カメラワーク」を隠して 🏠 / 🎞 のアイコンだけにする。
+     AR(短い)と画質バッジは文字を残す。PC/iPad はラベル表示のまま。 */
+  #view-tl-btns #lbl-cam-reset,
+  #view-tl-btns #lbl-cam-anim{ display:none !important; }
   #view-tl-btns > button,
   #view-tl-btns button{
     padding:6px 8px !important;font-size:.57em !important;line-height:1.2 !important;
@@ -1699,7 +1713,7 @@ body.immersive #immersive-exit{ display:inline-block; }
       background:linear-gradient(to bottom, rgba(255,180,84,.06), transparent)">
       <div style="display:flex;align-items:baseline;gap:14px">
         <strong style="font-size:1.25em;letter-spacing:.04em" data-i18n-key="manual-title">📖 ロケハン3D ユーザーマニュアル</strong>
-        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.1.5-beta / 3DGS マルチビューア + プリビズ (ベータ版)</span>
+        <span style="opacity:.55;font-size:.82em" data-i18n-key="manual-version">v 0.1.6-beta / 3DGS マルチビューア + プリビズ (ベータ版)</span>
       </div>
       <button onclick="closeManual()" style="background:transparent;border:1px solid rgba(255,255,255,.12);
         color:#aab;border-radius:6px;padding:6px 12px;font-size:.92em;cursor:pointer;font-family:inherit"
@@ -3193,6 +3207,25 @@ body.ar-active #dz{display:none !important;}
     <div class="dz-changelog-body" id="dz-changelog-body" hidden>
       <div class="cl-entry">
         <div class="cl-entry-head">
+          <span class="cl-ver">v 0.1.6-beta</span>
+          <span class="cl-date">2026-06-19</span>
+          <span class="cl-tag"><span class="cl-ja">モバイル微調整</span><span class="cl-en">Mobile tweaks</span></span>
+        </div>
+        <ul class="cl-ja">
+          <li>📱 スマホ: <b>各パネル（日照・測定・カメラワーク等）に覆われて AR ボタンが押せなくなる問題を修正</b>（上部ボタン列を最前面に）</li>
+          <li>📱 スマホ: <b>上部ボタンをアイコンのみに整理</b>（混雑・被りを軽減）＋<b>トップバー直下へ詰めて上のデッドスペースを解消</b>（従来は指定が効かず余白が残っていた不具合を修正）</li>
+          <li>📐 測定の<b>「左クリックで点 B を配置」案内を全端末で非表示</b>に（点A配置後はバナーを出さない）</li>
+          <li>☀ スマホ: <b>日照パネルをさらに小さく</b>（文字・幅を縮小）</li>
+        </ul>
+        <ul class="cl-en">
+          <li>📱 Phone: <b>fixed the AR button becoming untappable when a panel (Sun / Measure / Camera Work …) covered it</b> (top button row now sits above panels)</li>
+          <li>📱 Phone: <b>top buttons simplified to icons only</b> (less clutter / overlap) and <b>moved flush under the top bar to remove the dead space above them</b> (fixes the prior rule that never took effect)</li>
+          <li>📐 Measure: <b>the “Left-click to place Point B” hint is now hidden on all devices</b> (no banner after Point A)</li>
+          <li>☀ Phone: <b>Sun panel made even smaller</b> (reduced font + width)</li>
+        </ul>
+      </div>
+      <div class="cl-entry">
+        <div class="cl-entry-head">
           <span class="cl-ver">v 0.1.5-beta</span>
           <span class="cl-date">2026-06-19</span>
           <span class="cl-tag"><span class="cl-ja">操作性・モバイル</span><span class="cl-en">UX · Mobile</span></span>
@@ -3271,7 +3304,7 @@ body.ar-active #dz{display:none !important;}
     </div>
   </div>
   <div class="dz-version-line">
-    <span id="tb-version">v 0.1.5-beta</span>
+    <span id="tb-version">v 0.1.6-beta</span>
   </div>
 </div>
 
@@ -5918,7 +5951,7 @@ window.clearMeasure = function() {
   _applyHeightUI(false);
   document.getElementById('measDist').textContent = '-';
   document.getElementById('distComp').style.display = 'none';
-  document.getElementById('msr-hint').textContent = T('msr-h0');
+  { const _mh=document.getElementById('msr-hint'); if(_mh){ _mh.style.display='block'; _mh.textContent=T('msr-h0'); } }
   updateMeasureStatuses();
   markDirty(4);
 };
@@ -5948,12 +5981,15 @@ function commitPreview() {
     msr.step = 1;
     document.getElementById('measDist').textContent = '-';
     document.getElementById('distComp').style.display = 'none';
-    document.getElementById('msr-hint').textContent = T('msr-h1');
+    // 「左クリックで点 B を配置」(msr-h1) は全端末で非表示（user request 2026-06-19）。
+    // 点A配置後はガイドバナーを隠し、点B配置後の再測定ヒント(msr-h2)で復帰させる。
+    { const _mh=document.getElementById('msr-hint'); if(_mh) _mh.style.display='none'; }
   } else {
     msr.ptB.copy(pos); msr.markerB.position.copy(pos);
     msr.markerB.visible = true;
     msr.line.visible = true;
     msr.step = 2;
+    { const _mh=document.getElementById('msr-hint'); if(_mh) _mh.style.display='block'; }
     document.getElementById('msr-hint').textContent = T('msr-h2');
     updateMeasureLine();
   }
@@ -9008,8 +9044,13 @@ window.undoMeasure = function() {
   if(msr.lineAC) msr.lineAC.visible = msr.heightOn && msr.step >= 1;
   if (s.step < 2) document.getElementById('distComp').style.display = 'none';
   syncGizmoToMsr();
+  // 点B段階(step 1)のヒント(msr-h1)は全端末で非表示（user request 2026-06-19）。
   const hintMap = [T('msr-h0'), T('msr-h1'), T('msr-h2')];
-  document.getElementById('msr-hint').textContent = hintMap[s.step];
+  { const _mh=document.getElementById('msr-hint');
+    if(_mh){
+      if(s.step === 1){ _mh.style.display='none'; }
+      else { _mh.style.display='block'; _mh.textContent = hintMap[s.step]; }
+    } }
   updateUndoInfo();
   showUndoToast(T('undo-done-tpl').replace('{n}', msr.undoStack.length));
 };
@@ -19247,7 +19288,7 @@ Object.assign(I18N.ja,{
   'lbl-rot':'角度',
   'tt-edit-dbl':'ダブルクリックで編集',
   'manual-title':'📖 ロケハン3D ユーザーマニュアル',
-  'manual-version':'v 0.1.5-beta / 3DGS マルチビューア + プリビズ (ベータ版)',
+  'manual-version':'v 0.1.6-beta / 3DGS マルチビューア + プリビズ (ベータ版)',
   'manual-close':'閉じる ✕',
   'manual-grp-quick':'クイックスタート',
   'manual-grp-basic':'基本操作',
@@ -19511,7 +19552,7 @@ Object.assign(I18N.en,{
   'lbl-rot':'Angle',
   'tt-edit-dbl':'Double-click to edit',
   'manual-title':'📖 LOCAHUN 3D User Manual',
-  'manual-version':'v 0.1.5-beta / 3DGS multi-viewer + previz (Beta)',
+  'manual-version':'v 0.1.6-beta / 3DGS multi-viewer + previz (Beta)',
   'manual-close':'Close ✕',
   'manual-grp-quick':'QUICK START',
   'manual-grp-basic':'BASICS',
@@ -20820,7 +20861,7 @@ window.toggleChangelog = function(){
 //  Manifest format:
 //    { "version":"0.0.2", "url":"...", "sha256":"<hex>", "notes":"..." }
 // ══════════════════════════════════════════════════
-const CURRENT_VERSION    = '0.1.5-beta';
+const CURRENT_VERSION    = '0.1.6-beta';
 const UPDATE_MANIFEST_URL =
   'https://raw.githubusercontent.com/nakamurakou1108/Locahun3D/main/version.json';
 
