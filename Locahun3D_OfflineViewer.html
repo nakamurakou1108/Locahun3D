@@ -916,7 +916,7 @@ body{position:fixed;top:0;left:0;}
   #sun-panel{ width:min(190px, calc(100vw - 24px)) !important; padding:7px !important; }
   #cam-panel{ width:min(210px, 75vw) !important; padding:8px 9px !important; }
   #quality-panel{ width:min(190px, calc(100vw - 24px)) !important; padding:7px 9px !important; }
-  #gizmo{ width:min(200px, calc(100vw - 24px)) !important; padding:8px 10px !important; }
+  #gizmo{ width:min(200px, calc(100vw - 24px)) !important; padding:8px 10px !important; top:100px !important; max-height:calc(100vh - 370px) !important; }
   #cam-anim-panel{ width:min(210px, calc(100vw - 24px)) !important; padding:8px 10px !important; max-height:60vh !important; }
 }
 
@@ -7810,22 +7810,23 @@ function _camAnimRenderPanel(){
       ➕ ${nextLabel}
     </button>
     <div style="max-height:38vh;overflow-y:auto;margin-bottom:8px">${listHtml}</div>
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-      <label style="font-size:.76em;color:#bbb;min-width:70px">
-        ${t('Speed', '速度')} (m/s)
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:6px">
+      <label style="font-size:.72em;color:#bbb;white-space:nowrap">
+        ${t('Speed', '速度')}
       </label>
       <input type="range" id="cam-anim-speed-slider" min="0.1" max="10" step="0.1"
         value="${camAnim.speed}"
         oninput="window.camAnimSetSpeed(parseFloat(this.value))"
-        style="flex:1;accent-color:#b594ff">
+        style="flex:1;min-width:0;accent-color:#b594ff">
       <input type="number" id="cam-anim-speed" min="0.1" max="60" step="0.1"
         value="${camAnim.speed}"
         oninput="window.camAnimSetSpeed(parseFloat(this.value))"
-        style="width:54px;background:#1a1a1f;color:#fff;border:1px solid rgba(255,255,255,.18);
-               border-radius:4px;padding:2px 4px;font-size:.84em">
+        style="width:42px;background:#1a1a1f;color:#fff;border:1px solid rgba(255,255,255,.18);
+               border-radius:4px;padding:2px 3px;font-size:.78em">
+      <span style="font-size:.65em;color:#888">m/s</span>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-      <label style="font-size:.76em;color:#bbb;min-width:70px">
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:6px">
+      <label style="font-size:.72em;color:#bbb;white-space:nowrap">
         ${t('Motion', '動き')}
       </label>
       <div style="flex:1;display:flex;gap:4px">
@@ -7848,20 +7849,20 @@ function _camAnimRenderPanel(){
     <div style="font-size:.72em;color:#777;margin-bottom:8px">
       ${t('Total duration', '総再生時間')}: <span id="cam-anim-total">${camAnim.totalSec.toFixed(2)}</span> s
     </div>
-    <div style="display:flex;gap:6px">
+    <div style="display:flex;gap:4px">
       <button onclick="window.camAnimPreview()" ${ready ? '' : 'disabled'}
-        style="flex:1;padding:7px;background:rgba(120,200,255,.18);
+        style="flex:1;padding:5px 6px;background:rgba(120,200,255,.18);
                border:1px solid rgba(140,210,255,.4);color:#cce8ff;
-               border-radius:6px;cursor:${ready?'pointer':'not-allowed'};
-               opacity:${ready?1:.4};font-weight:600">
+               border-radius:5px;cursor:${ready?'pointer':'not-allowed'};
+               opacity:${ready?1:.4};font-size:.85em">
         ▶ ${camAnim.playing ? t('Stop','停止') : t('Preview','プレビュー')}
       </button>
       <button onclick="window.camAnimRecordExport()" ${ready ? '' : 'disabled'}
-        style="flex:1;padding:7px;background:rgba(255,80,80,.18);
+        style="flex:1;padding:5px 6px;background:rgba(255,80,80,.18);
                border:1px solid rgba(255,140,140,.4);color:#ffd6d6;
-               border-radius:6px;cursor:${ready?'pointer':'not-allowed'};
-               opacity:${ready?1:.4};font-weight:600">
-        ⏺ ${t('Record &amp; Export','録画&書き出し')}
+               border-radius:5px;cursor:${ready?'pointer':'not-allowed'};
+               opacity:${ready?1:.4};font-size:.85em">
+        ⏺ ${t('Record','録画')}
       </button>
     </div>`;
 }
