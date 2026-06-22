@@ -18980,7 +18980,6 @@ window.addPathLayer=function(){
   _pathMode=true; _pathPts=[]; _clearPathTemp();
   document.addEventListener('keydown', _onPathKey, true);
   _pathHint(true);
-  showUndoToast('🛣 4点を左クリック長押しで配置（押している間プレビュー、離して確定 / Escで中止）');
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -19032,8 +19031,6 @@ window._beginPlace=function(kind){
   _placeMode=kind; _placeHideProbe();
   document.addEventListener('keydown', _onPlaceKey, true);
   _placeHint(true);
-  const labels={cube:'Cube',event:'Event',figure:'Figure'};
-  showUndoToast((window._lang==='en'?'📍 Click in the scene to place ':'📍 シーン内を左クリック長押しで配置 ')+(labels[kind]||''));
 };
 function _commitPlace(clientX, clientY){
   const p=pickWorldPos(clientX, clientY);
