@@ -6062,13 +6062,14 @@ function updateMeasureLine() {
     arr[3]=msr.ptB.x; arr[4]=msr.ptB.y; arr[5]=msr.ptB.z;
     msr.line.geometry.attributes.position.needsUpdate = true;
     const dist = msr.ptA.distanceTo(msr.ptB);
-    document.getElementById('measDist').textContent = dist.toFixed(4) + ' m';
+    // 0.01 m (1cm) 精度に丸め、端数（3桁目以降）を削除（user 2026-06-27）。
+    document.getElementById('measDist').textContent = dist.toFixed(2) + ' m';
     // Component deltas
     const compEl = document.getElementById('distComp');
     compEl.style.display = 'flex';
-    document.getElementById('dcX').textContent = Math.abs(msr.ptB.x-msr.ptA.x).toFixed(4);
-    document.getElementById('dcY').textContent = Math.abs(msr.ptB.y-msr.ptA.y).toFixed(4);
-    document.getElementById('dcZ').textContent = Math.abs(msr.ptB.z-msr.ptA.z).toFixed(4);
+    document.getElementById('dcX').textContent = Math.abs(msr.ptB.x-msr.ptA.x).toFixed(2);
+    document.getElementById('dcY').textContent = Math.abs(msr.ptB.y-msr.ptA.y).toFixed(2);
+    document.getElementById('dcZ').textContent = Math.abs(msr.ptB.z-msr.ptA.z).toFixed(2);
   }
   // Update vertical A↔C line + height readout
   if (msr.heightOn && msr.lineAC && msr.step >= 1){
@@ -6078,7 +6079,7 @@ function updateMeasureLine() {
     msr.lineAC.geometry.attributes.position.needsUpdate = true;
     const h = msr.ptA.distanceTo(msr.ptC);
     const hEl = document.getElementById('measHeight');
-    if(hEl) hEl.textContent = h.toFixed(4) + ' m';
+    if(hEl) hEl.textContent = h.toFixed(2) + ' m';
   }
 }
 
@@ -9388,7 +9389,7 @@ function drawRuler(sA, sB, ptA, ptB, color) {
   const mx = (sA.x + sB.x) / 2 + px * LOFF;
   const my = (sA.y + sB.y) / 2 + py * LOFF;
 
-  const distStr = dist3D.toFixed(4) + ' m';
+  const distStr = dist3D.toFixed(2) + ' m';
   octx.font = 'bold 13px "Segoe UI",monospace';
   const tw = octx.measureText(distStr).width;
   const PH = 21, PW = tw + 14;
@@ -9421,9 +9422,9 @@ function drawRuler(sA, sB, ptA, ptB, color) {
   // Component deltas below label
   const compY = my + PH/2 + 14;
   const parts = [
-    { label: `ΔX ${dx3.toFixed(3)}`, col:'#ff5566' },
-    { label: `ΔY ${dy3.toFixed(3)}`, col:'#55ee66' },
-    { label: `ΔZ ${dz3.toFixed(3)}`, col:'#5599ff' },
+    { label: `ΔX ${dx3.toFixed(2)}`, col:'#ff5566' },
+    { label: `ΔY ${dy3.toFixed(2)}`, col:'#55ee66' },
+    { label: `ΔZ ${dz3.toFixed(2)}`, col:'#5599ff' },
   ];
   octx.font = '10px "Segoe UI",monospace';
   const totalW = 160;
