@@ -456,6 +456,8 @@ body{position:fixed;top:0;left:0;}
 #hud .cbar button:hover,#hud .cbar button.on{
   background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);color:#D8D8D8;
 }
+body.cam-active #hud .cbar > button:not(#btnCamTool){ display:none !important; }
+body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
 
 /* ── Settings panel ── */
 #qpanel{
@@ -6139,6 +6141,7 @@ function _hideCamAnimPanel(){
 }
 function _closeMeasureOnly(){
   msr.active=false;
+  document.body.classList.remove('msr-active');
   document.getElementById('btnMeasure').classList.remove('on');
   document.getElementById('btnMeasure').innerHTML='📐 <span id="lbl-measure">'+T('lbl-measure')+'</span>';
   // Restore the gizmo End button to its idle label
@@ -8897,6 +8900,7 @@ window.toggleMeasure = function() {
       if(typeof _setSunActive==='function') _setSunActive(false);
     }
     msr.active=true;
+    document.body.classList.add('msr-active');
     document.getElementById('btnMeasure').classList.add('on');
     document.getElementById('btnMeasure').innerHTML='📐 <span id="lbl-measure">'+T('msr-active-lbl')+'</span>';
     document.getElementById('btnMeasureEnd').textContent=T('msr-end-lbl');
