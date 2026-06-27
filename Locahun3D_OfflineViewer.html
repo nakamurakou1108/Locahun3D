@@ -3225,7 +3225,7 @@ body.immersive #immersive-exit{ display:inline-block; }
   background:rgba(20,20,22,.95);backdrop-filter:blur(12px);
   border-left:1px solid rgba(255,255,255,.08);color:#d8d8d8;
   font-size:.78em;font-family:ui-sans-serif,system-ui,sans-serif;
-  padding:14px 14px 14px;overflow-y:auto;z-index:60;display:none;">
+  padding:14px 14px 14px;overflow-y:auto;overscroll-behavior:contain;z-index:60;display:none;">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <strong style="font-size:1.05em;letter-spacing:.04em">📷 <span id="ct-tool">カメラツール</span></strong>
     <button onclick="toggleCamTool()" style="background:none;border:none;color:#888;
@@ -5269,6 +5269,11 @@ function _precipFxUpdate(type, lv){
   } else { _precipLevel=0; _precipType='none'; if(_precipCv) _precipCv.style.display='none'; }
 }
 window.addEventListener('resize', ()=>{ if(_precipLevel>=1) _precipResize(); });
+// iOS/iPad: テキスト入力にフォーカスすると position:fixed のページごとスクロールしてしまう。
+// アプリは全画面固定で正規のページスクロールが無いので、常に左上(0,0)へ戻す（内部パネルの
+// overflow スクロールはwindowのscrollイベントを発火しないので影響なし）。
+window.addEventListener('scroll', ()=>{ if(window.pageYOffset || window.pageXOffset) window.scrollTo(0,0); }, {passive:true});
+if(window.visualViewport){ window.visualViewport.addEventListener('scroll', ()=>{ if(window.pageYOffset||window.pageXOffset) window.scrollTo(0,0); }); }
 window.__setRain   = function(lv){ _precipFxUpdate(lv>=1?'rain':'none', lv||0); };  // 後方互換
 window.__setPrecip = function(type, lv){ _precipFxUpdate(type, lv||0); };           // 検証/微調整用
 
@@ -17137,22 +17142,29 @@ function animate(now) {
       // "枠内とレンズ画角が違う") — Pass 1 must use a WIDER vertical FOV that fills the
       // full viewport height H at that same scale: fov_context = fov · (H / r.h).
       const _lensVFov = fov;
-      // ★焦点距離(px)を枠と完全一致させる＝tanベースでスケールする。
-      //   旧コードは角度を線形にスケール(fov·H/h)していたが、ピンホール射影では
-      //   焦点距離が一致しないと枠縁で見え方(スケール)がジャンプする（35mm等の広角で顕著）。
-      //   f_px = (h/2)/tan(fov/2) を全画面高Hでも一致 → ctxVFov = 2·atan((H/h)·tan(fov/2))。
-      const _ctxVFov  = 2 * Math.atan((r.viewportH / Math.max(1, r.h)) * Math.tan(_lensVFov * Math.PI/360)) * 180/Math.PI;
+      // ★枠の内外を完全に連続させる: 同じ「焦点距離(px)」かつ同じ「主点(光軸が当たる点)」で描く。
+      //   焦点距離 f_px = (h/2)/tan(fov/2)。主点は枠の中心(_fcx,_fcy)に合わせる。
+      //   枠は画面中心からズレているので、Pass1は setViewOffset で主点を枠中心へ寄せた
+      //   非対称フラスタムにする（これでスケールだけでなく位置も連続する）。
+      const _fovRad = _lensVFov * Math.PI / 180;
+      const _fpx = (r.h / 2) / Math.tan(_fovRad / 2);          // 焦点距離(px・縦)
+      const _fcx = r.x + r.w / 2, _fcy = r.y + r.h / 2;        // 枠の中心＝主点に合わせる
+      const _Hw  = Math.max(_fcx, innerWidth  - _fcx);
+      const _Hh  = Math.max(_fcy, innerHeight - _fcy);
+      const _fullW = 2 * _Hw, _fullH = 2 * _Hh;
 
-      // Pass 1 — outside context: full canvas, canvas aspect, widened FOV.
+      // Pass 1 — outside context: 主点を枠中心に合わせた拡張フラスタム（焦点距離は枠と一致）。
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, innerWidth, innerHeight);
-      camera.aspect = innerWidth / Math.max(1, innerHeight);
-      camera.fov = _ctxVFov;
+      camera.aspect = _fullW / Math.max(1, _fullH);
+      camera.fov = 2 * Math.atan(_Hh / _fpx) * 180 / Math.PI;
+      camera.setViewOffset(_fullW, _fullH, _Hw - _fcx, _Hh - _fcy, innerWidth, innerHeight);
       camera.updateProjectionMatrix();
       if(_useOrtho){ _syncOrthoCamera(); renderer.render(scene,_orthoCamera); }
       else renderer.render(scene, camera);
 
-      // Pass 2 — frame composition: frame aspect, scissored, true lens FOV.
+      // Pass 2 — frame composition: 主点=枠中心の対称フラスタム（オフセット解除）。
+      camera.clearViewOffset();
       renderer.setViewport(r.x, yFromBottom, r.w, r.h);
       renderer.setScissor(r.x, yFromBottom, r.w, r.h);
       renderer.setScissorTest(true);
@@ -17173,6 +17185,7 @@ function animate(now) {
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, innerWidth, innerHeight);
     renderer.setScissor(0, 0, innerWidth, innerHeight);
+    camera.clearViewOffset();   // Pass1のオフセットが残らないよう確実に解除
     camera.aspect = innerWidth / Math.max(1, innerHeight);
     camera.updateProjectionMatrix();
   }
