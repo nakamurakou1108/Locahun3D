@@ -4255,6 +4255,26 @@ const _PR_CAP = (_splatPerfTier === 'phone')  ? 1.5
               : (_splatPerfTier === 'tablet') ? 1.75
               : (typeof _isMac !== 'undefined' && _isMac) ? 1.5
               :                                 2;
+// Camera-mode zoom supersampling (user 2026-06-27): when composing a shot at a
+// long lens (≥50mm) the narrow FOV magnifies the splats and they look soft. Render
+// the canvas at a higher pixel ratio so the framed splats keep detail. 50mm→×1.0,
+// scaling with focal, capped at ×1.8 to bound the GPU cost. Reverts below 50mm or
+// when the camera tool closes. PR > the normal cap is intentional here (a
+// deliberate "compose a still" mode, not the live fly-around).
+function _camZoomResBoost(){
+  if(!(typeof cam!=='undefined' && cam.active)) return 1;
+  const f = (cam.focal || 35);
+  if(f < 50) return 1;
+  return Math.min(1.8, 1 + (f - 50) / 150);   // 50→1.0, 125→1.5, ≥200→1.8(cap)
+}
+function _applyRenderPixelRatio(){
+  const boost = _camZoomResBoost();
+  // Allow the boost to exceed the normal _PR_CAP, but keep an absolute ceiling so
+  // a huge DPR × boost can't allocate an enormous buffer.
+  const basePR = Math.min(devicePixelRatio, _PR_CAP) * qualScale;
+  const pr = Math.min(basePR * boost, (devicePixelRatio || 1) * 2.2);
+  renderer.setPixelRatio(pr);
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, _PR_CAP) * qualScale);
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x000000); // black — splat sort gaps blend cleanly with dark/night and don't flash gray
@@ -6920,6 +6940,7 @@ function applyCamSettings(){
   const _eff = _camEffectiveSensorWH();
   camera.aspect = _eff.w / Math.max(1e-6, _eff.h);
   camera.updateProjectionMatrix();
+  _applyRenderPixelRatio();   // supersample more as the lens zooms in (≥50mm)
   layoutCamFrame();
   drawCamGrid();
   updateCamHud();
@@ -7217,6 +7238,7 @@ window.toggleCamTool = function(){
     fov = cam.prevFOV;
     camera.fov = fov;
     camera.updateProjectionMatrix();
+    _applyRenderPixelRatio();   // revert the camera-zoom supersampling
     markDirty(4);
   }
   // 日照パネルの位置をカメラ状態に追従（起動中=中央下 / それ以外=右下）
