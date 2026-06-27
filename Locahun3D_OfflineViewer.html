@@ -16639,20 +16639,31 @@ function animate(now) {
       // sensor aspect ratio for precise composition. ──
       const yFromBottom = r.viewportH - r.y - r.h;
 
-      // Pass 1 — outside context: full canvas, canvas aspect.
+      // The frame (Pass 2) shows the true lens vertical FOV (`fov` = sensor VFOV)
+      // across the SHORTER frame height r.h. For the dim CONTEXT (Pass 1) to be
+      // continuous with the frame — same angular scale (deg per pixel), so the
+      // scene doesn't visibly jump scale at the frame edge (user 2026-06-27
+      // "枠内とレンズ画角が違う") — Pass 1 must use a WIDER vertical FOV that fills the
+      // full viewport height H at that same scale: fov_context = fov · (H / r.h).
+      const _lensVFov = fov;
+      const _ctxVFov  = _lensVFov * (r.viewportH / Math.max(1, r.h));
+
+      // Pass 1 — outside context: full canvas, canvas aspect, widened FOV.
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, innerWidth, innerHeight);
       camera.aspect = innerWidth / Math.max(1, innerHeight);
+      camera.fov = _ctxVFov;
       camera.updateProjectionMatrix();
       if(_useOrtho){ _syncOrthoCamera(); renderer.render(scene,_orthoCamera); }
       else renderer.render(scene, camera);
 
-      // Pass 2 — frame composition: frame aspect, scissored.
+      // Pass 2 — frame composition: frame aspect, scissored, true lens FOV.
       renderer.setViewport(r.x, yFromBottom, r.w, r.h);
       renderer.setScissor(r.x, yFromBottom, r.w, r.h);
       renderer.setScissorTest(true);
       renderer.clear();
       camera.aspect = r.w / Math.max(1, r.h);
+      camera.fov = _lensVFov;
       camera.updateProjectionMatrix();
 
       // Update the CSS letterbox overlay that darkens the outside area.
