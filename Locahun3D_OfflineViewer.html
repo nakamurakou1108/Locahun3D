@@ -1088,9 +1088,11 @@ body.cam-active #view-tl-btns{
      「右上・同じ幅・同じ最大高」に統一（user 2026-06-28）。サイズは共有の .58em＋幅で合わせ、
      位置は bottom 基点をやめて top:46px・right:14px に揃える。scale は使わない。 */
   #sun-panel, #gizmo, #cam-anim-panel{
-    top:46px !important; bottom:auto !important; left:auto !important; right:14px !important;
+    /* top は上UI(上部ボタン行)の下端を実測して JS が --m-panel-top に設定 → かぶらない。
+       未設定時は上ボタン行(top:57)＋約1.5行ぶんを見込んだ 96px をフォールバック。 */
+    top:var(--m-panel-top, 96px) !important; bottom:auto !important; left:auto !important; right:14px !important;
     width:min(210px, calc(100vw - 24px)) !important;
-    max-height:calc(100vh - 64px) !important;
+    max-height:calc(100vh - var(--m-panel-top, 96px) - 14px) !important;
     transform:none !important;
   }
   /* 上部の カメラワーク(🎞) ボタンの行内サイズを 2/3 に詰める。
@@ -7811,6 +7813,27 @@ function _layoutCamMode(){
   document.body.classList.toggle('cam-cramped', cramped);
 }
 window._layoutCamMode = _layoutCamMode;   // exposed for resize hooks / debugging
+
+// スマホ: 日照/測定/カメラワーク パネルの top を「上UI(上部ボタン行)の下端」から決めて
+// かぶらないようにする。上ボタンが隠れている(cam-cramped等)ときはトップバー直下に置く。
+// 上ボタン行は折返しで1〜2行になるので、実測した bottom を使う（user 2026-06-28）。
+function _mPanelTop(){
+  const root = document.documentElement;
+  if(!matchMedia('(pointer:coarse) and (any-hover:none)').matches){ root.style.removeProperty('--m-panel-top'); return; }
+  let topPx = 53;   // 上ボタンが無いとき＝トップバー(45px)直下
+  const tl = document.getElementById('view-tl-btns');
+  if(tl && getComputedStyle(tl).display!=='none'){
+    const r = tl.getBoundingClientRect();
+    if(r.height > 0) topPx = Math.round(r.bottom + 8);
+  }
+  root.style.setProperty('--m-panel-top', topPx + 'px');
+}
+window._mPanelTop = _mPanelTop;
+window.addEventListener('resize', _mPanelTop);
+window.addEventListener('orientationchange', ()=>setTimeout(_mPanelTop, 250));
+// パネルを開くタップの直後に再計算（どのツールボタンでも拾えるよう全クリックで・軽量）。
+document.addEventListener('click', ()=>setTimeout(_mPanelTop, 30), true);
+setTimeout(_mPanelTop, 400);   // 初期化
 
 // ══════════════════════════════════════════════════
 //  CAMERA LAYER (multi-camera placement)
