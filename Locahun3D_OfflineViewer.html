@@ -713,19 +713,25 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
 #qi-badge{
   position:fixed;top:54px;right:14px;z-index:60;
   display:flex;align-items:center;gap:6px;
+  /* ── Unified with the sibling top-row buttons (#btn-cam-reset / #btnAddCubeTop
+     / #btnCamAnim …) so the 画質 chip is sized & styled IDENTICALLY and is no
+     longer "left behind" when the row's look is edited (user 2026-06-27).
+     Same background / border / colour / radius / padding / font-size as the
+     siblings' inline styles. All RESPONSIVE sizing now comes from the shared
+     `#view-tl-btns button` media rules (the badge IS a <button> in that row —
+     see _qiBadgeIntoActionRow), exactly like its neighbours, so there are NO
+     dedicated per-breakpoint #qi-badge sizing rules anymore. */
   background:rgba(20,20,22,.88);
   border:1px solid rgba(255,255,255,.18);
-  color:rgba(220,220,220,.85);
+  color:rgba(200,200,200,.85);
   border-radius:6px;
-  /* Match the neighbouring action buttons (user 2026-06 "ほかのボタンと同じ大きさ"):
-     same .72em font + .18 border; the in-row rule below sets the matching padding. */
-  padding:4px 9px;font-size:.72em;
-  font-family:ui-monospace,Consolas,monospace;
+  padding:5px 12px;font-size:.72em;
   cursor:pointer;pointer-events:all;
   transition:background .15s,border-color .15s;
   /* line-height:normal (was 1.2) so the 🖥 emoji's line box matches the other
      action buttons — otherwise the chip rendered ~3px shorter than them. */
   letter-spacing:.02em;line-height:normal;
+  white-space:nowrap;
   user-select:none;
   /* It's a <button> now — strip the native control chrome so it looks exactly
      like the old <div>, and make sure no tap on it (or its child spans) can
@@ -751,6 +757,9 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
 #qi-badge .qib-icon{opacity:.65;}
 #qi-badge .qib-lvl{color:#ffe4b3;font-weight:600;}
 #qi-badge .qib-fps{color:rgba(180,180,180,.65);
+  /* The number stays monospace + tabular so the chip width doesn't jitter as the
+     FPS readout changes (container font now matches the sibling buttons). */
+  font-family:ui-monospace,Consolas,monospace;
   font-variant-numeric:tabular-nums;min-width:46px;text-align:right;
   /* Never let the FPS read-out wrap to a 2nd line (that fattened the chip): keep
      it on one line, and floor the width to the WIDEST value ("144 fps" ≈ 46px)
@@ -758,25 +767,12 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
      to "60 fps" (39px) the instant a tap/interaction starts rendering — the
      "画質ボタンを触るとサイズが変わる" report. */
   white-space:nowrap;flex-shrink:0;}
-/* Touch-device badge sizing: keep visible on iPad / iPhone (FPS readout
-   was requested back). Slightly larger tap target so users can comfortably
-   tap to open the quality panel. */
-@media (pointer:coarse) and (any-hover:none){
-  /* Touch: match the other action buttons' font (.72em) — padding comes from the
-     in-row rule below. (Phones drop to .57em via the #view-tl-btns button rule,
-     same as the neighbouring buttons.) */
-  #qi-badge{ font-size:.72em; }
-}
 /* When JS moves the badge into the camera action row (see _qiBadgeIntoActionRow)
    it flows inline at the row's RIGHT END rather than being pinned to the corner.
-   This applies on every device. */
-#view-tl-btns > #qi-badge{ position:static; top:auto; right:auto; align-self:center;
-  /* Same HEIGHT as the neighbouring action buttons (user 2026-06 "ほかのボタンと
-     同じ大きさ"): 5px vertical padding matches them, so the chip lines up in the row
-     AND the dropdown (anchored just under the row) no longer overlaps the taller
-     buttons. !important so it outranks the generic #view-tl-btns button padding
-     rule (also !important) on phones. */
-  gap:4px !important; padding:6px 10px !important; }
+   This applies on every device. POSITIONING ONLY — sizing (font/padding) is
+   inherited from the shared `#view-tl-btns button` rules so the chip always
+   tracks its sibling buttons (no dedicated sizing here). */
+#view-tl-btns > #qi-badge{ position:static; top:auto; right:auto; align-self:center; }
 @media (pointer:coarse) and (any-hover:none) and (max-width:600px) and (orientation:portrait){
   /* Phone PORTRAIT: keep the whole top group on ONE line (user request 2026-06
      "縦画面の上UIを一列に"). On phones only 3 buttons survive (🏠リセット / ⏺録画 /
@@ -789,7 +785,7 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
      half the viewport and stack 3 lines; the ≤384px breakpoint below handles
      genuinely-narrow phones instead.) */
   #view-tl-btns{ gap:4px !important; }
-  #view-tl-btns > #qi-badge{ position:static !important; top:auto; right:auto; align-self:center !important; }
+  /* (画質チップの position:static は基底ルールで設定済み＝専用の再指定は不要。) */
 }
 @media (pointer:coarse) and (any-hover:none) and (orientation:portrait) and (max-width:384px){
   /* Narrow phones (iPhone SE / mini, ≤375px): 5 top buttons can't fit one line,
@@ -1151,9 +1147,8 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
   #hud .cbar > button{
     padding:7px 9px !important;font-size:.60em !important;line-height:1.2 !important;
   }
-  #qi-badge{
-    top:30px;right:6px;padding:4px 7px;font-size:.59em;gap:3px;line-height:1.2;
-  }
+  /* (画質チップは上の #view-tl-btns button ルールで他ボタンと同じ .57em/6px8px に
+     縮む＝専用指定不要。) */
 }
 /* (Previous iPhone-only "hoist action row into topbar" override removed
    because the buttons ended up overlapping the topbar widgets and the
@@ -1212,8 +1207,8 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
      panels than desktop — thumbs can't reach desktop-sized controls easily. */
   #sun-panel, #quality-panel, #gizmo{ font-size:.68em !important; width:220px !important; padding:10px 12px !important; }
   #cam-anim-panel{ font-size:.68em !important; }
-  #view-tl-btns > #qi-badge, #qi-badge{ font-size:.68em !important; }
-  #view-tl-btns > #qi-badge{ padding:5px 9px !important; gap:4px !important; }
+  /* (画質チップの専用サイズ指定は撤去。兄弟ボタンと同じ #view-tl-btns button
+     ルールでサイズが決まる＝iPadでは兄弟同様 .72em のまま統一される。) */
   /* When camera tool is open, move ▲▼ beside the joystick (same as phone fix) so
      the right-side cam-panel doesn't cover them. */
   body.cam-active #joy-vert{ left:208px !important; right:auto !important; }
@@ -1251,13 +1246,14 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
    the device's top safe-area inset so it clears the notch. The inset is 0 on
    non-notched devices and in normal (non-fullscreen) mode, so nothing else moves.
    Separate :fullscreen / :-webkit-full-screen rules so an unknown pseudo on one
-   engine doesn't drop the rule for the other. */
+   engine doesn't drop the rule for the other.
+   NOTE: the 画質 chip is a CHILD of #view-tl-btns now, so shifting the row already
+   moves the chip with it — a separate `#qi-badge` margin here would DOUBLE the
+   offset, so it's intentionally omitted (unified with the row). */
 :fullscreen #topbar,
-:fullscreen #view-tl-btns,
-:fullscreen #qi-badge{ margin-top: env(safe-area-inset-top, 0px); }
+:fullscreen #view-tl-btns{ margin-top: env(safe-area-inset-top, 0px); }
 :-webkit-full-screen #topbar,
-:-webkit-full-screen #view-tl-btns,
-:-webkit-full-screen #qi-badge{ margin-top: env(safe-area-inset-top, 0px); }
+:-webkit-full-screen #view-tl-btns{ margin-top: env(safe-area-inset-top, 0px); }
 
 /* ── Simple "fullscreen" for phones (2026-06) ──
    iPhone Safari has NO Fullscreen API (only iPad/Android do), so the ⛶ button
@@ -1269,8 +1265,7 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
    appears to leave the mode. (Phone-only: the ⛶ button is shown on phones only,
    so iPad never enters this.) */
 body.immersive #topbar,
-body.immersive #view-tl-btns,
-body.immersive #qi-badge{ display:none !important; }
+body.immersive #view-tl-btns{ display:none !important; }  /* 画質チップは #view-tl-btns の子なので一緒に隠れる（専用ルール不要） */
 #immersive-exit{
   display:none; position:fixed; z-index:90;
   top: calc(8px + env(safe-area-inset-top, 0px)); right: 10px;
@@ -1300,10 +1295,8 @@ body.immersive #immersive-exit{ display:inline-block; }
   #topbar .tb-integrity{ font-size:.76em; }
 
   #view-tl-btns{ top:64px !important; }
+  /* 画質チップ含む全ボタンを一括拡大（バッジ専用ルールは廃止＝兄弟と完全統一）。 */
   #view-tl-btns button{ font-size:.82em !important; padding:7px 16px !important; }
-
-  #qi-badge{ top:62px; font-size:.80em; padding:5px 11px; }
-  #view-tl-btns > #qi-badge{ padding:6px 12px !important; }
 
   #hud .cbar button{ font-size:.86em; padding:10px 18px; border-radius:10px; }
 
@@ -1336,8 +1329,6 @@ body.immersive #immersive-exit{ display:inline-block; }
 
   #view-tl-btns{ top:72px !important; }
   #view-tl-btns button{ font-size:.88em !important; padding:8px 18px !important; }
-
-  #qi-badge{ top:70px; font-size:.86em; padding:6px 13px; }
 
   #hud .cbar button{ font-size:.94em; padding:12px 22px; }
 
@@ -1408,8 +1399,8 @@ body.immersive #immersive-exit{ display:inline-block; }
   #cam-anim-panel{ max-height:calc(100vh - 80px) !important; width:min(200px, 40vw) !important; }
   #topbar{ height:28px !important; }
   #view-tl-btns{ top:30px !important; }
+  /* 画質チップ含む全ボタンを一括縮小（バッジ専用ルールは廃止＝兄弟と完全統一）。 */
   #view-tl-btns button{ padding:4px 6px !important; font-size:.52em !important; }
-  #qi-badge{ top:28px !important; font-size:.54em !important; padding:3px 6px !important; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════
