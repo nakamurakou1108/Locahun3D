@@ -1082,6 +1082,15 @@ body.cam-active #view-tl-btns{
   #quality-panel{ width:min(190px, calc(100vw - 24px)) !important; padding:7px 9px !important; }
   #gizmo{ width:min(200px, calc(100vw - 24px)) !important; padding:8px 10px !important; top:100px !important; max-height:min(50vh, calc(100vh - 130px)) !important; }
   #cam-anim-panel{ width:min(210px, calc(100vw - 24px)) !important; padding:8px 10px !important; max-height:60vh !important; }
+  /* user 2026-06-28: スマホUIをさらに 2/3 に縮小（押して出るパネル＋上部カメラワーク/画質バッジ）。
+     パネルは右下/右上を基点に scale → 位置を保ったまま一回り小さく（日照パネルの上見切れも緩和）。 */
+  #sun-panel{ transform:scale(.67); transform-origin:bottom right; }
+  #quality-panel{ transform:scale(.67); transform-origin:top right; }
+  #cam-anim-panel{ transform:scale(.67); transform-origin:top center; }
+  /* 上部の カメラワーク(🎞) と 画質/FPSバッジ は行内ボタンなので font/padding を 2/3 に詰める。
+     画質バッジが右に間延びするのも padding 縮小で解消。 */
+  #view-tl-btns > #btnCamAnim,
+  #view-tl-btns > #qi-badge{ font-size:.5em !important; padding:3px 7px !important; }
 }
 
 /* ── Axis pivot highlight ── */
