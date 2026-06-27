@@ -470,6 +470,20 @@ body{position:fixed;top:0;left:0;}
 #hud .cbar button:hover,#hud .cbar button.on{
   background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);color:#D8D8D8;
 }
+/* Touch tap feedback (user 2026-06-27): on iOS the :hover / synthetic-mouseover
+   highlight STICKS after a tap and reads as "this is still active" even when the
+   action is finished. On touch we (a) neutralise the sticky :hover for buttons
+   that aren't in a persistent .on mode, and (b) show the press highlight only via
+   a brief `.tap-fx` class that JS removes after ~1s. */
+@media (pointer:coarse) and (any-hover:none){
+  #hud .cbar button:hover:not(.on):not(.tap-fx){
+    background:rgba(28,28,30,.92);border-color:rgba(255,255,255,.1);color:#C0C0C0;
+  }
+  #hud .cbar button.tap-fx,
+  #view-tl-btns button.tap-fx{
+    background:rgba(255,255,255,.16) !important;border-color:rgba(255,255,255,.32) !important;color:#fff !important;
+  }
+}
 /* カメラ／日照モード中は「📷カメラ」と「☀日照」の2つだけ残す（この2機能は同時に
    使える関連ペアなので、どちらのモードでも互いに行き来できるようにする — user 2026-06-27）。
    測定・使い方は隠してビューを広く保つ。 */
@@ -477,6 +491,10 @@ body.cam-active #hud .cbar > button:not(#btnCamTool):not(#btn-sun){ display:none
 body.sun-active #hud .cbar > button:not(#btnCamTool):not(#btn-sun){ display:none !important; }
 /* 測定モード中は「📐測定」のみ（測定は日照と排他）。 */
 body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
+/* カメラモード中は上ボタン行も撮影に使うものだけに絞る：🎞カメラワーク / 📱AR /
+   🖥画質チップ のみ表示し、カメラリセット・オブジェクト追加・アバター歩行は隠す
+   （user 2026-06-27）。AR は元々タッチ端末でのみ表示。 */
+body.cam-active #view-tl-btns > *:not(#btnCamAnim):not(#btnAR):not(#qi-badge){ display:none !important; }
 
 /* ── Settings panel ── */
 #qpanel{
@@ -848,6 +866,14 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
 #quality-panel .qp-bar-pct{
   font-size:.65em;color:#B8B8B8;font-variant-numeric:tabular-nums;
 }
+/* Touch: the 低 / 中 / 高 quality buttons are too narrow to tap comfortably on
+   iPad / iPhone. Make the three share the panel width equally (≈1.5×+ wider)
+   and add vertical padding for a bigger hit target. user 2026-06-27. */
+@media (pointer:coarse) and (any-hover:none){
+  #quality-panel #qbtns{ gap:6px !important; }
+  #quality-panel #qbtns button{ flex:1 1 0 !important; min-width:0 !important;
+    padding-top:8px !important; padding-bottom:8px !important; }
+}
 
 /* ── Layer panel resize handle ── */
 #layer-panel .lp-resize{
@@ -856,6 +882,12 @@ body.msr-active #hud .cbar > button:not(#btnMeasure){ display:none !important; }
   background:transparent;transition:background .15s;
 }
 #layer-panel .lp-resize:hover{background:rgba(255,255,255,.12);}
+/* Touch: enlarge the divider / width handle hit areas so they're grabbable with
+   a finger on iPad / iPhone (user 2026-06-27). */
+@media (pointer:coarse) and (any-hover:none){
+  #lp-divider{ height:18px !important; }
+  #layer-panel .lp-resize{ width:18px !important; right:-9px !important; }
+}
 /* ── Light object visual ── */
 .light-gizmo{pointer-events:auto;}
 
@@ -1867,6 +1899,12 @@ body.immersive #immersive-exit{ display:inline-block; }
       <circle cx="50" cy="50" r="4.4" fill="#0c0c0d"/>
     </svg><span id="tb-brand-text" data-i18n="tb-brand" style="font-weight:600;letter-spacing:.03em;white-space:nowrap;line-height:1;display:inline-flex;align-items:center">ロケハン3D</span></button>
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-end">
+    <!-- Undo (1 step). Mirrors Ctrl+Z: undoes the last measurement step while
+         measuring, otherwise the last scene action (move/add/delete/pose…).
+         Up to 20 steps are kept (≥10 as requested). user 2026-06-27. -->
+    <button class="tb-update" id="tb-undo-btn"
+      onclick="topbarUndo()"
+      title="一つ前に戻す (Ctrl+Z)">↩ <span id="tb-undo-lbl">戻る</span></button>
     <button class="tb-bug" id="tb-report-btn" onclick="reportBug()"
       title="エラー / 不具合を開発者に報告">🐛</button>
     <button class="tb-update" id="tb-update-btn" onclick="checkForUpdate(true)"
@@ -5399,6 +5437,32 @@ window.toggleAppFullscreen = function(){
   document.addEventListener('fullscreenchange', upd);
   document.addEventListener('webkitfullscreenchange', upd);
 })();
+// ── Touch tap feedback auto-clear (user 2026-06-27) ──
+// On touch devices the press highlight on the top row (#view-tl-btns) and the
+// bottom bar (#hud .cbar) used to STICK after a tap (iOS sticky :hover, and the
+// top buttons' inline onmouseover setting an inline background). Show the press
+// highlight for ~1s only: add a `.tap-fx` class on touchend and remove it after
+// 1000ms, also resetting any inline hover background the top buttons applied.
+(function _tapFlashAutoClear(){
+  const coarse = window.matchMedia && window.matchMedia('(pointer:coarse) and (any-hover:none)').matches;
+  if(!coarse) return;
+  const SEL = '#view-tl-btns button, #hud .cbar button';
+  const TOP_BASE_BG = 'rgba(20,20,22,.88)', TOP_BASE_BORDER = 'rgba(255,255,255,.18)';
+  document.addEventListener('touchend', e=>{
+    const btn = e.target.closest && e.target.closest(SEL);
+    if(!btn) return;
+    btn.classList.add('tap-fx');
+    setTimeout(()=>{
+      btn.classList.remove('tap-fx');
+      // Top-row buttons set an inline hover bg via onmouseover (which iOS fires
+      // on tap and never clears) — reset it so the highlight doesn't persist.
+      if(btn.closest('#view-tl-btns')){
+        btn.style.background = TOP_BASE_BG;
+        btn.style.borderColor = TOP_BASE_BORDER;
+      }
+    }, 1000);
+  }, {passive:true});
+})();
 // Move the 画質 / perf badge to the RIGHT END of the camera action row so the top
 // controls read as one cohesive group instead of a separate floating chip in the
 // corner (user request 2026-06). It becomes the last flex child of #view-tl-btns;
@@ -5782,7 +5846,9 @@ function updateLayerPivot(){
   const s=Math.max(0.01, d*0.04);
   lpv.group.scale.setScalar(s);
   // ── ローカル / ワールド座標系 ──
-  if(L.pivotSpace==='local'){
+  // Events (billboards) always use a world-aligned, untilted pivot regardless of
+  // pivotSpace — copying the camera-facing mesh.rotation tilted the move arrows.
+  if(L.pivotSpace==='local' && !_isEvt){
     lpv.group.rotation.copy(L.mesh.rotation);
   } else {
     lpv.group.rotation.set(0,0,0);
@@ -12457,6 +12523,13 @@ function globalRedo(){
   }
 }
 
+// Exposed for the top-bar "↩ 戻る" button (inline onclick runs in GLOBAL scope and
+// can't see the module-scoped globalUndo). Mirrors the Ctrl+Z behaviour: undo the
+// last measurement step while measuring, else the last scene action.
+window.topbarUndo = function(){
+  if(typeof msr!=='undefined' && msr.active && msr.undoStack && msr.undoStack.length) window.undoMeasure();
+  else globalUndo();
+};
 function globalUndo(){
   _flushGenericPending();
   if(!globalUndoStack.length){ showUndoToast(T('undo-none')); return; }
@@ -12918,7 +12991,8 @@ window.removeLayer=function(id){
   }
   renderLayerList();
   renderTransformPanel();
-  showUndoToast(T('deleted-undo'));
+  // (削除トーストは非表示 — user 2026-06-27「これ表示いらない」。取り消しは Ctrl+Z /
+  //  上メニューの「↩ 戻る」で可能。)
   markDirty(8);
   if(typeof _haloMarkDirty === 'function') _haloMarkDirty();
   if(typeof _recountLayerActivity === 'function') _recountLayerActivity();
@@ -13360,7 +13434,7 @@ function applyI18n(){
   // 日照パネルの都市ドロップダウンを言語に合わせて翻訳
   if(typeof _sunApplyCityI18n==='function') _sunApplyCityI18n();
   // HUD labels
-  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-camtool','lbl-env','lbl-help','orient-lock-msg','orient-lock-sub','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-load-lbl','tb-report-lbl','fp-btn-import-lbl','fp-btn-export-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-1inch','ct-sensor-phone13','ct-sensor-phone17','ct-sensor-phone23','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-json-d','em-glb','em-glb-d','em-obj','em-obj-d','em-cancel','em-recommended','em-h-title','qp-settings-t','qp-lbl-lowpoly-main','qp-lbl-lowpoly-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','cl-tag-v003','lbl-walk','lbl-save-camera','lbl-view-rec','lbl-view-rec-phone','lbl-cam-anim','giz-pt-a','giz-pt-b','giz-pt-c','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','obj-add-path','msr-end-lbl-init'].forEach(id=>{
+  ['lbl-pos','lbl-spd','lbl-rot','lbl-measure','lbl-flip','lbl-addobj','lbl-quality','lbl-settings','lbl-file','lbl-cam-reset','lbl-camtool','lbl-env','lbl-help','orient-lock-msg','orient-lock-sub','lbl-addobj-top','lbl-addfig-top','tb-save-lbl','tb-undo-lbl','tb-load-lbl','tb-report-lbl','fp-btn-import-lbl','fp-btn-export-lbl','csp-shot-info','csp-cam-info','csp-meta-info','csp-shot-name','csp-rig','csp-env','csp-note','csp-capture','csp-burnin','csp-burnin-grid','csp-capture-btn','csp-salvage','csp-salvage-drop','csp-salvage-sub','ct-tool','ct-lens','ct-focal','ct-sensor','ct-sensor-ff','ct-sensor-apsc','ct-sensor-apsh','ct-sensor-mft','ct-sensor-1inch','ct-sensor-phone13','ct-sensor-phone17','ct-sensor-phone23','ct-sensor-m65','ct-sensor-s35','ct-sensor-bm','ct-sensor-cust','ct-sensor-w','ct-sensor-h','ct-cam-angle','ct-pan','ct-tilt','ct-roll','ct-roll-level','ct-wb','ct-wb-temp','ct-aspect','ct-aspect-sensor','ct-aspect-cust','ct-aspect-apply','ct-margin','ct-grid','ct-grid-multi','ct-grid-guide','ct-grid-off','ct-grid-thirds','ct-grid-golden','ct-grid-cross','ct-grid-diag','ct-grid-safe-cust','ct-grid-action','ct-grid-title','ct-grid-center','ct-grid-custom','ct-grid-cols','ct-grid-rows','ct-grid-opacity','dz-manual-text','dz-ar-label','env-h-title','env-p-off','env-p-day','env-p-morning','env-p-evening','env-p-night','env-p-cloudy','env-p-rain','env-p-overcast','env-p-twilight','env-l-rot','env-l-int','msr-active-lbl','msr-end-lbl','lp-h-scene','lp-empty','qt-title','qt-low','qt-mid','qt-high','qp-perf-t','qp-l-frame','qp-l-gpu','qp-l-head','qp-l-dc','qp-l-tris','qp-l-geos','qp-l-texs','dist-l','msr-clear','msr-undo','em-3dgs','em-3dgs-d','em-zip-save','em-zip-save-d','em-zip-load','em-zip-load-d','em-json','em-json-d','em-glb','em-glb-d','em-obj','em-obj-d','em-cancel','em-recommended','em-h-title','qp-settings-t','qp-lbl-lowpoly-main','qp-lbl-lowpoly-hint','qp-lbl-grid','qp-lbl-show','qp-lbl-fov','qp-lbl-spd','cl-title','cl-sub','cl-tag-init','cl-tag-v003','lbl-walk','lbl-save-camera','lbl-view-rec','lbl-view-rec-phone','lbl-cam-anim','giz-pt-a','giz-pt-b','giz-pt-c','giz-height-lbl','height-l','csp-jpeg-q','csp-4k-lbl','obj-add-cube','obj-add-sphere','obj-add-light','obj-add-event','obj-add-path','msr-end-lbl-init'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.textContent=T(id);
   });
   // HUD info-box edit tooltip + dropzone titles
@@ -15509,27 +15583,40 @@ document.addEventListener('click',e=>{
   const transform=document.getElementById('layer-transform');
   if(!divider||!list||!transform) return;
   let dragging=false, startY=0, startH=0;
-  divider.addEventListener('mousedown',e=>{
-    dragging=true; startY=e.clientY;
+  // Shared start/move/end so BOTH mouse and touch can drag the divider — on
+  // iPad/iPhone the mouse-only handlers never fired, so the layer↔object-info
+  // split couldn't be adjusted by long-press/drag (user 2026-06-27).
+  function onStart(clientY){
+    dragging=true; startY=clientY;
     startH=list.getBoundingClientRect().height;
     document.body.style.cursor='ns-resize';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove',e=>{
+  }
+  function onMove(clientY){
     if(!dragging) return;
-    const footer=document.getElementById('lp-footer-bar');
-    const footerTop=footer?footer.getBoundingClientRect().top:window.innerHeight-60;
     const divH=divider.getBoundingClientRect().height||4;
     const listTop=list.getBoundingClientRect().top;
     const panel=document.getElementById('layer-panel');
     const panelBottom=panel?panel.getBoundingClientRect().bottom:window.innerHeight;
     const maxH=Math.max(60,panelBottom-listTop-divH-80);
-    const newH=Math.max(60,Math.min(maxH,startH+(e.clientY-startY)));
+    const newH=Math.max(60,Math.min(maxH,startH+(clientY-startY)));
     list.style.flex='none'; list.style.height=newH+'px';
-  });
-  document.addEventListener('mouseup',()=>{
-    if(dragging){ dragging=false; document.body.style.cursor=''; }
-  });
+  }
+  function onEnd(){ if(dragging){ dragging=false; document.body.style.cursor=''; } }
+  divider.addEventListener('mousedown',e=>{ onStart(e.clientY); e.preventDefault(); });
+  document.addEventListener('mousemove',e=>onMove(e.clientY));
+  document.addEventListener('mouseup',onEnd);
+  // Touch (iPad / phone): mirror the mouse drag. touchstart is non-passive so we
+  // can preventDefault and stop the panel from scrolling while resizing.
+  divider.addEventListener('touchstart',e=>{
+    if(!e.touches.length) return;
+    onStart(e.touches[0].clientY); e.preventDefault();
+  },{passive:false});
+  document.addEventListener('touchmove',e=>{
+    if(!dragging||!e.touches.length) return;
+    onMove(e.touches[0].clientY); e.preventDefault();
+  },{passive:false});
+  document.addEventListener('touchend',onEnd);
+  document.addEventListener('touchcancel',onEnd);
   // Show divider when transform is visible
   const _origRTP=renderTransformPanel;
   // Hook: show/hide divider based on layer-transform visibility
@@ -18917,7 +19004,10 @@ window.addEventLayer = function(posHint){
   }
   const p=group.position;
   group.scale.set(0.25,0.25,0.25);
-  const L=addLayer({name:'Event '+_nextLayerNameNumber('event'), type:'event', mesh:group, size:{x:1,y:1,z:1}});
+  // Events are camera-facing billboards — a per-object rotation is meaningless and
+  // made the pivot gizmo look "tilted" at placement. Use a WORLD-aligned pivot (no
+  // tilt; position only) — matches the ZIP-restore default. user 2026-06-27.
+  const L=addLayer({name:'Event '+_nextLayerNameNumber('event'), type:'event', mesh:group, size:{x:1,y:1,z:1}, pivotSpace:'world'});
   L.pos={x:p.x,y:p.y,z:p.z};
   L.scale={x:0.25,y:0.25,z:0.25};
   L.eventImage=null; L.eventImageName=null;
@@ -19506,6 +19596,7 @@ Object.assign(I18N.ja,{
   'ct-grid-rows':'行',
   'ct-grid-opacity':'不透明度',
   'tb-save-lbl':'Zip保存',
+  'tb-undo-lbl':'戻る',
   'tb-load-lbl':'読込',
   'tb-report-lbl':'エラー報告',
   'tt-report':'エラー / 不具合を開発者に報告',
@@ -19771,6 +19862,7 @@ Object.assign(I18N.en,{
   'ct-grid-rows':'Rows',
   'ct-grid-opacity':'Opacity',
   'tb-save-lbl':'Zip Save',
+  'tb-undo-lbl':'Undo',
   'tb-load-lbl':'Load',
   'tb-report-lbl':'Report Bug',
   'tt-report':'Report a bug or issue to the developer',
@@ -20469,6 +20561,7 @@ let tlId=-1,tlX=0,tlY=0;
 // transform handle of the selected object. Lets iPad users grab the pivot and
 // move/rotate/scale, mirroring the desktop mouse gizmo drag.
 let _lpvTouchId=-1;
+let _lpvTouchHit=null;   // the lpv handle currently highlighted for a touch-drag (reset on release)
 // Generic handle touch-drag (2026-06): the finger identifier currently dragging
 // a NON-lpv transform handle — measurement axis arrow / XZ plane, measurement
 // marker, figure bone-rotation ring, figure IK handle, or path edit point.
@@ -20531,6 +20624,11 @@ canvas.addEventListener('touchstart',e=>{
     if(hit){
       startLpvDrag(hit, tg.clientX, tg.clientY);
       _lpvTouchId = tg.identifier;
+      // Highlight the grabbed handle (arrow / rotation ring / scale cube) so it's
+      // obvious WHICH axis is being dragged on touch — there's no hover on a finger
+      // (user 2026-06-27 "どこが長押しで選択されているかわかりずらい"). Reset on release.
+      _lpvTouchHit = hit;
+      if(typeof _applyLpvHighlight==='function') _applyLpvHighlight(hit);
       try { if(navigator.vibrate) navigator.vibrate(12); } catch(_){}
       markDirty(6);
     }
@@ -20697,6 +20795,7 @@ canvas.addEventListener('touchend',e=>{
     for(const t of e.changedTouches){
       if(t.identifier === _lpvTouchId){
         _lpvTouchId = -1;
+        if(_lpvTouchHit){ if(typeof _resetLpvHighlight==='function') _resetLpvHighlight(_lpvTouchHit); _lpvTouchHit=null; }
         if(typeof lpv!=='undefined' && lpv.dragging){ lpv.dragging=null; markDirty(6); }
         break;
       }
@@ -20742,6 +20841,7 @@ canvas.addEventListener('touchcancel',e=>{
   // Abort a pivot gizmo touch-drag on cancel (e.g. iOS palm rejection).
   if(_lpvTouchId !== -1){
     _lpvTouchId = -1;
+    if(_lpvTouchHit){ if(typeof _resetLpvHighlight==='function') _resetLpvHighlight(_lpvTouchHit); _lpvTouchHit=null; }
     if(typeof lpv!=='undefined' && lpv.dragging){ lpv.dragging=null; markDirty(6); }
   }
   // Abort a generic handle touch-drag on cancel (e.g. iOS palm rejection).
