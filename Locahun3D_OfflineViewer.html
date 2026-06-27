@@ -4607,14 +4607,13 @@ function _envBuildMesh(){
         }
         // ── procedural clouds: 視線を雲層平面へ投影 → 地平線に向かって雲が収束する ──
         if(uCloudAmt > 0.001 && vDir.y > 0.0){
-          // 雲だけを Y軸まわりに一定角速度で回転させて流す（空グラデ/太陽は回さない）。
-          // 視界内では雲が一方向へ均一に流れ、その場 churn/回転にならない。
-          float ca = cos(uCloudTime * 0.022), sa = sin(uCloudTime * 0.022);
-          vec3 cdir = vec3(ca * vDir.x + sa * vDir.z, vDir.y, -sa * vDir.x + ca * vDir.z);
           // 平面投影（分母に定数＝地平線付近の極端な伸びを抑える）
-          vec2 uv = (cdir.xz / (cdir.y * 0.85 + 0.18)) * 0.5;
-          float base   = fbm(uv);
-          float detail = fbm(uv * 2.7);
+          vec2 uv = (vDir.xz / (vDir.y * 0.85 + 0.18)) * 0.5;
+          // 雲を Y方向（奥行き=画面の縦方向）へ一定速度で流す＝手前の地平から頭上へ立ち上がる動き。
+          // 全層を同じ量だけ平行移動（剛体）→ その場回転/churn にならない。
+          vec2 p = uv - vec2(0.0, uCloudTime * 0.05);
+          float base   = fbm(p);
+          float detail = fbm(p * 2.7);
           float n = base * 0.62 + detail * 0.38;                 // multi-scale wisps
           float cov = clamp(uCloudAmt, 0.0, 1.0);
           // 気象庁の雲量定義(空を覆う割合)に一致させる較正。実測ノイズ分布の分位点から逆算し、
@@ -4623,7 +4622,7 @@ function _envBuildMesh(){
           float density = smoothstep(mid - 0.055, mid + 0.055, n);
           density *= smoothstep(0.02, 0.24, vDir.y);             // haze-fade near horizon (no singularity)
           // shading: sunlit top vs shadowed underside (underside follows sky → dark in rain)
-          float lit = clamp(fbm(uv * 1.3 + normalize(uSunDir).xz * 0.28) * 1.35, 0.0, 1.0);
+          float lit = clamp(fbm(p * 1.3 + normalize(uSunDir).xz * 0.28) * 1.35, 0.0, 1.0);
           vec3 cloudBase = mix(uHorizon, uZenith, 0.35) * 0.55;
           vec3 cloudTop  = mix(vec3(1.0), uSunColor, 0.4);
           vec3 cloudCol  = mix(cloudBase, cloudTop, lit * uCloudLight);
