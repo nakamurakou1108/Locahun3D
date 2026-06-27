@@ -63,6 +63,19 @@ body{position:fixed;top:0;left:0;}
 /* The WebGL canvas itself never needs a ring even if focused for key input. */
 #c:focus-visible, #overlay:focus-visible{ outline: none !important; box-shadow: none !important; }
 
+/* ── Reduced motion (E-Ink readers, low-GPU TVs/consoles, motion-sensitive
+   users). Standard safe reset: collapse CSS transitions/animations so UI chrome
+   snaps instead of animating. Does NOT touch the WebGL 3D render (that's
+   JS-driven), only the DOM UI. user 2026-06-28. ── */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* iPad/iPhone fix (2026-06): touch-action:manipulation on the document root does
    NOT reliably propagate the "no double-tap-zoom" behaviour to individual elements
    in iOS Safari — a touch that STARTS on an element uses that element's own (auto)
