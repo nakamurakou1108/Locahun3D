@@ -1242,6 +1242,9 @@ body.cam-active #view-tl-btns{
   /* Center the surviving buttons so they don't anchor to the cbar's
      original (off-center) origin. */
   #hud .cbar{justify-content:center !important;}
+  /* カメラ起動中(スマホ)は 日照ボタンを隠し、カメラ(終了)ボタンだけを
+     ジョイスティック上の空きスペース(青枠)へ寄せる(横位置は _layoutCamMode が設定)。 */
+  body.cam-active #btn-sun{ display:none !important; }
   /* Phone fix (2026-06): on a ≤600px phone the 176px joystick (anchored
      bottom-left, reaching the horizontal centre at x≈200) plus the elevation
      arrows immediately to its right (x≈208–278) fill the ENTIRE bottom band.
@@ -7754,12 +7757,19 @@ function _layoutCamMode(){
   }
   const center = Math.round((leftBound + panLeft) / 2);
   const room = panLeft - leftBound;
+  const cramped = room < 150;
   const freeW = Math.max(80, Math.round(room - 12));
-  root.style.setProperty('--cam-cbar-left', center+'px');
+  // 余白が狭い（スマホ）とき、下部cbar(=カメラ終了ボタン)はジョイスティックの真上へ寄せる(青枠の位置)。
+  let cbarLeft = center;
+  if(cramped && joy && getComputedStyle(joy).display!=='none'){
+    const jb = joy.getBoundingClientRect();
+    cbarLeft = Math.round(jb.left + jb.width / 2);
+  }
+  root.style.setProperty('--cam-cbar-left', cbarLeft+'px');
   root.style.setProperty('--cam-top-left', center+'px');
   root.style.setProperty('--cam-top-maxw', freeW+'px');
   // 自由ゾーンが狭すぎる（スマホ縦など）と上部ボタンがパネルに重なるので、その時は隠す。
-  document.body.classList.toggle('cam-cramped', room < 150);
+  document.body.classList.toggle('cam-cramped', cramped);
 }
 window._layoutCamMode = _layoutCamMode;   // exposed for resize hooks / debugging
 
