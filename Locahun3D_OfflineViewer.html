@@ -4607,20 +4607,20 @@ function _envBuildMesh(){
         }
         // ── procedural clouds: 視線を雲層平面へ投影 → 地平線に向かって雲が収束する ──
         if(uCloudAmt > 0.001 && vDir.y > 0.0){
-          float yy = max(vDir.y, 0.06);
-          vec2 uv = (vDir.xz / yy) * 0.45;                       // planar projection
-          // 一方向の風で流す（正確性より体感重視・速め・主に横方向）。
-          // 基層と詳細層を「同方向」かつ詳細をやや速く＝視差で自然に一方向へ流れて見える。
-          vec2 drift = vec2(uCloudTime * 0.028, uCloudTime * 0.005);
-          float base   = fbm(uv + drift);
-          float detail = fbm(uv * 2.7 + drift * 1.6);
+          // 平面投影をやわらげる（分母に定数を足して地平線付近の極端な伸び＝回転感を抑える）。
+          vec2 uv = (vDir.xz / (vDir.y * 0.85 + 0.18)) * 0.5;
+          // 一定方向の風で「剛体」平行移動：先に uv へ風を足してから各オクターブをスケール
+          // → 全層が完全に同じ向き・同じ世界速度で流れる＝その場回転/churn しない。
+          vec2 p = uv + vec2(0.030, 0.009) * uCloudTime;         // wind direction (constant)
+          float base   = fbm(p);
+          float detail = fbm(p * 2.7);
           float n = base * 0.62 + detail * 0.38;                 // multi-scale wisps
           float cov = clamp(uCloudAmt, 0.0, 1.0);
           float lo = mix(0.86, 0.12, cov);                       // higher coverage → lower threshold
           float density = smoothstep(lo, lo + 0.16, n);          // crisp edges → 部分曇りで青空の隙間が見える
           density *= smoothstep(0.02, 0.24, vDir.y);             // haze-fade near horizon (no singularity)
           // shading: sunlit top vs shadowed underside (underside follows sky → dark in rain)
-          float lit = clamp(fbm(uv * 1.3 + drift + normalize(uSunDir).xz * 0.28) * 1.35, 0.0, 1.0);
+          float lit = clamp(fbm(p * 1.3 + normalize(uSunDir).xz * 0.28) * 1.35, 0.0, 1.0);
           vec3 cloudBase = mix(uHorizon, uZenith, 0.35) * 0.55;
           vec3 cloudTop  = mix(vec3(1.0), uSunColor, 0.4);
           vec3 cloudCol  = mix(cloudBase, cloudTop, lit * uCloudLight);
@@ -5051,22 +5051,16 @@ function _applyWeather(pal, weather){
 //  予報時は cloud_cover% / 雨レベルで連続的にスケール（強度再現）。
 function _sunCloudParams(){
   if(!sun._fcAuto) return { amt:0.0, light:1.0 };    // 手動＝雲なし（フラット表示を厳守）
-  const w = sun.weather;
-  if(w === 'rain'){
+  // ★雲量は天気分類(晴れ/曇り/雨)に関係なく cloud_cover% がそのまま被覆率を決める。
+  //   50%なら晴れ判定でもちゃんと半分雲が出る。雲は天気に依らず常に存在する。
+  const a = (typeof sun._fcCloudAmt === 'number') ? sun._fcCloudAmt : 0.0;  // 実雲量 0..1
+  // 天気は「雲の明暗(ムード)」だけを決める。被覆率(amt)には触らない。
+  let light = 0.95 - 0.33 * a;                        // 雲が多いほど下面がやや暗い
+  if(sun.weather === 'rain'){
     const lv = sun._fcRainLevel || 2;
-    if(lv >= 3) return { amt:0.97, light:0.32 };     // 豪雨: 真っ黒に近い厚い雲
-    if(lv >= 2) return { amt:0.90, light:0.48 };     // 雨
-    return { amt:0.80, light:0.62 };                 // 霧雨: 薄め・明るめ
+    light = (lv >= 3) ? 0.30 : (lv >= 2 ? 0.45 : 0.60);  // 雨ほど暗い雲
   }
-  if(w === 'cloudy'){
-    const a = (typeof sun._fcCloudAmt === 'number') ? sun._fcCloudAmt : 0.6;  // 0..1 実雲量
-    // 雲量をそのまま被覆率へ。50%=ちぎれ雲＋青空 / 87%=ほぼ曇り / 100%=完全な曇天、と差が出る。
-    return { amt: a, light: 0.92 - 0.30 * a };
-  }
-  // 晴れ（予報）: cloud_cover が低ければまばらな好天積雲を反映。
-  let a = 0.16;
-  if(typeof sun._fcCloudAmt === 'number') a = Math.min(0.45, 0.10 + 0.55 * sun._fcCloudAmt);
-  return { amt:a, light:1.0 };
+  return { amt:a, light };
 }
 
 // 雲のドリフト(流れ)アニメ。日照モード中＆雲があるときだけ ~10fps で回し、
@@ -5320,14 +5314,18 @@ function _sunFcDetailForNow(){
   const code=(hh.weather_code&&hh.weather_code[idx]!=null)?hh.weather_code[idx]:null;
   if(code==null) return null;
   const wx=_wmoWx(code).wx;
-  let cloudAmt=null, rainLevel=null;
-  if(wx==='cloudy'){
-    const cc=(hh.cloud_cover&&hh.cloud_cover[idx]!=null)?hh.cloud_cover[idx]:null;
-    // 雲量% を 0..1 に。霧(45/48)など雲量欠損時は厚めの 0.85 を既定とする。
-    cloudAmt = (cc!=null) ? Math.max(0,Math.min(1, cc/100)) : 0.85;
-  } else if(wx==='rain'){
+  // ★雲量は天気分類に関係なく常に cloud_cover% から取る（晴れでも雨でも雲は存在する）。
+  const cc=(hh.cloud_cover&&hh.cloud_cover[idx]!=null)?hh.cloud_cover[idx]:null;
+  let cloudAmt = (cc!=null) ? Math.max(0,Math.min(1, cc/100)) : null;
+  let rainLevel=null;
+  if(wx==='rain'){
     const pr=(hh.precipitation&&hh.precipitation[idx]!=null)?hh.precipitation[idx]:null;
     rainLevel = _rainLevelFromCodePrecip(code, pr);
+    if(cloudAmt==null) cloudAmt = 0.9;          // 雨で雲量欠損 → 厚め
+  } else if(wx==='cloudy' && cloudAmt==null){
+    cloudAmt = 0.85;                            // 霧(45/48)など雲量欠損 → 厚め
+  } else if(cloudAmt==null){
+    cloudAmt = 0;                               // 晴れで雲量欠損 → 雲なし
   }
   return { wx, cloudAmt, rainLevel };
 }
