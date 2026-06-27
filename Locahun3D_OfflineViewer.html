@@ -1843,7 +1843,7 @@ body.immersive #immersive-exit{ display:inline-block; }
      toggleARMode() swaps its label to "AR 終了" + red state. -->
 <div id="topbar">
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-    <button id="tb-save-btn" onclick="saveProjectZip()" style="background:rgba(100,255,150,.08);border:1px solid rgba(100,255,150,.2);color:rgba(100,255,150,.7);border-radius:5px;padding:2px 8px;font-size:.72em;cursor:pointer;transition:all .15s;white-space:nowrap" onmouseover="this.style.background='rgba(100,255,150,.18)'" onmouseout="this.style.background='rgba(100,255,150,.08)'" title="ZIP Save">💾 <span id="tb-save-lbl">オフライン保存</span></button>
+    <button id="tb-save-btn" onclick="saveProjectZip()" style="background:rgba(100,255,150,.08);border:1px solid rgba(100,255,150,.2);color:rgba(100,255,150,.7);border-radius:5px;padding:2px 8px;font-size:.72em;cursor:pointer;transition:all .15s;white-space:nowrap" onmouseover="this.style.background='rgba(100,255,150,.18)'" onmouseout="this.style.background='rgba(100,255,150,.08)'" title="ZIP Save">💾 <span id="tb-save-lbl">Zip保存</span></button>
     <!-- 読込 (load project ZIP) button removed: project ZIPs are now imported
          via the layer panel "📁 インポート" button (dispatchFiles routes
          .zip → _loadProjectZipFromFile automatically) or via drag-and-drop. -->
@@ -1865,7 +1865,7 @@ body.immersive #immersive-exit{ display:inline-block; }
       </g>
       <circle cx="50" cy="50" r="11" fill="#f3a02a"/>
       <circle cx="50" cy="50" r="4.4" fill="#0c0c0d"/>
-    </svg><span id="tb-brand-text" data-i18n="tb-brand" style="font-weight:600;letter-spacing:.03em;white-space:nowrap">ロケハン3D</span></button>
+    </svg><span id="tb-brand-text" data-i18n="tb-brand" style="font-weight:600;letter-spacing:.03em;white-space:nowrap;line-height:1;display:inline-flex;align-items:center">ロケハン3D</span></button>
   <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;justify-content:flex-end">
     <button class="tb-bug" id="tb-report-btn" onclick="reportBug()"
       title="エラー / 不具合を開発者に報告">🐛</button>
@@ -2042,7 +2042,7 @@ body.immersive #immersive-exit{ display:inline-block; }
       <section id="m-save">
         <h2>💾 保存・読み込み</h2>
         <ul style="line-height:1.9">
-          <li><b>オフライン保存</b>（左上）：シーン全体を1つのZIPに保存。レイヤー・オブジェクト・カメラ・設定をまるごと復元できます。</li>
+          <li><b>Zip保存</b>（左上）：シーン全体を1つのZIPに保存。レイヤー・オブジェクト・カメラ・設定をまるごと復元できます。</li>
           <li><b>読み込み</b>（レイヤーパネル上の「📁 読み込み」）：ZIPや 3DGS / モデルを追加。</li>
           <li><b>🎥 カメラ保存</b>：今のカメラ位置をレイヤーとして保存。</li>
         </ul>
@@ -2542,7 +2542,7 @@ body.immersive #immersive-exit{ display:inline-block; }
       <section id="m-save">
         <h2>💾 Save &amp; load</h2>
         <ul style="line-height:1.9">
-          <li><b>Offline save</b> (top-left): saves the whole scene into a single ZIP — layers, objects, camera and settings all restore.</li>
+          <li><b>Zip save</b> (top-left): saves the whole scene into a single ZIP — layers, objects, camera and settings all restore.</li>
           <li><b>Load</b> (“📁 Load” above the layer panel): add a ZIP or a 3DGS / model.</li>
           <li><b>🎥 Save camera</b>: stores the current camera position as a layer.</li>
         </ul>
@@ -19505,7 +19505,7 @@ Object.assign(I18N.ja,{
   'ct-grid-cols':'列',
   'ct-grid-rows':'行',
   'ct-grid-opacity':'不透明度',
-  'tb-save-lbl':'オフライン保存',
+  'tb-save-lbl':'Zip保存',
   'tb-load-lbl':'読込',
   'tb-report-lbl':'エラー報告',
   'tt-report':'エラー / 不具合を開発者に報告',
@@ -19770,7 +19770,7 @@ Object.assign(I18N.en,{
   'ct-grid-cols':'Cols',
   'ct-grid-rows':'Rows',
   'ct-grid-opacity':'Opacity',
-  'tb-save-lbl':'Offline Save',
+  'tb-save-lbl':'Zip Save',
   'tb-load-lbl':'Load',
   'tb-report-lbl':'Report Bug',
   'tt-report':'Report a bug or issue to the developer',
