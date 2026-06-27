@@ -1935,6 +1935,7 @@ body.immersive #immersive-exit{ display:inline-block; }
   display:none;flex-direction:row;gap:6px;z-index:60;pointer-events:all;
   justify-content:center;">
   <button id="btn-cam-reset" onclick="resetCameraToInitial()"
+    ontouchend="if(event.cancelable)event.preventDefault(); resetCameraToInitial();"
     style="background:rgba(20,20,22,.88);border:1px solid rgba(255,255,255,.18);
            color:rgba(200,200,200,.85);border-radius:6px;padding:5px 12px;
            font-size:.72em;cursor:pointer;
@@ -5296,11 +5297,13 @@ if(window.visualViewport){ window.visualViewport.addEventListener('scroll', _loc
 // iPad/iOS: ページ地のタッチドラッグでページごと動くのを抑止（overflowスクロール可能なパネル内は許可）。
 document.addEventListener('touchmove', function(e){
   let el = e.target;
+  // ボタン/入力/スライダー等のタップは触らない（preventDefaultでクリックが消えてダブルタップ化するのを防ぐ）。
+  if(el.closest && el.closest('button, input, select, textarea, a, [role=button], .lr, #joy, #joy-vert')) return;
   while(el && el.nodeType===1 && el!==document.body){
     if(el.scrollHeight > el.clientHeight + 1){ const oy=getComputedStyle(el).overflowY; if(oy==='auto'||oy==='scroll') return; }
     el = el.parentElement;
   }
-  if(e.cancelable) e.preventDefault();   // ページ地のスクロールを止める
+  if(e.cancelable) e.preventDefault();   // ページ地(背景)のスクロールだけを止める
 }, {passive:false});
 window.__setRain   = function(lv){ _precipFxUpdate(lv>=1?'rain':'none', lv||0); };  // 後方互換
 window.__setPrecip = function(type, lv){ _precipFxUpdate(type, lv||0); };           // 検証/微調整用
