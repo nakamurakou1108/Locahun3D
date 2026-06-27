@@ -20262,6 +20262,21 @@ window.addEventListener('keydown',e=>{
   // Don't let camera / global shortcuts fire while the user is typing into a field.
   // Esc still escapes (browsers treat it specially anyway, and we use it to close).
   if(_isTypingInInput() && e.code !== 'Escape') return;
+  // ── TV / game-console D-pad navigation (user 2026-06-28) ──
+  // On no-hover devices (smart TV remote, controller, etc.) the D-pad maps to
+  // the Arrow keys, which the browser uses for SPATIAL FOCUS NAVIGATION between
+  // controls. This app otherwise eats the arrows to fly the camera — which would
+  // make the UI un-navigable by remote. So: on hover:none devices, when a UI
+  // control (button/input/link) is focused, let the arrows move focus instead of
+  // the camera. The 3D view (body/canvas focus) keeps arrow camera control, and
+  // DESKTOP (hover:hover) is entirely unaffected — WASD also always flies the
+  // camera regardless of focus.
+  if(e.code.startsWith('Arrow') && window.matchMedia && window.matchMedia('(hover: none)').matches){
+    const _ae = document.activeElement;
+    const _uiFocused = _ae && _ae !== document.body && _ae.id !== 'c' && _ae.id !== 'overlay'
+      && _ae.matches && _ae.matches('button,a,input,select,textarea,[tabindex],[role="button"]');
+    if(_uiFocused) return;   // let the browser move focus; don't record/eat the key
+  }
   // While avatar walk is active, Space is the JUMP key — prevent the browser
   // default (page scroll / re-activating the focused button) so a Space press
   // doesn't toggle walk mode off via the previously-clicked button.
