@@ -3495,6 +3495,14 @@ body.immersive #immersive-exit{ display:inline-block; }
           <input type="checkbox" id="cm-burnin-grid"
             style="accent-color:#ffb454;cursor:pointer"> <span id="csp-burnin-grid">グリッド/セーフ枠も焼き込み</span>
         </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.95em;cursor:pointer">
+          <input type="checkbox" id="cm-hide-paths"
+            style="accent-color:#ffb454;cursor:pointer"> <span id="csp-hide-paths">区画パスを非表示</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.95em;cursor:pointer">
+          <input type="checkbox" id="cm-hide-events"
+            style="accent-color:#ffb454;cursor:pointer"> <span id="csp-hide-events">イベントアイコンを非表示</span>
+        </label>
         <button onclick="captureCamShot()" id="cm-capture-btn"
           style="margin-top:4px;padding:8px;background:rgba(255,180,84,.2);
           border:1px solid rgba(255,180,84,.5);color:#ffe4b3;border-radius:4px;
@@ -8184,6 +8192,34 @@ function _setCaptureUIHidden(hide){
       delete sunViz.group.userData._capPrevVis;
     }
   }
+  // 区画パス / イベントアイコン — チェックON時のみ非表示にする
+  const _hidePaths  = !!(document.getElementById('cm-hide-paths')  ||{}).checked
+                   || !!(document.getElementById('ca-hide-paths')  ||{}).checked;
+  const _hideEvents = !!(document.getElementById('cm-hide-events') ||{}).checked
+                   || !!(document.getElementById('ca-hide-events') ||{}).checked;
+  if(typeof layers !== 'undefined' && Array.isArray(layers)){
+    for(const L of layers){
+      if(!L || !L.mesh) continue;
+      if((_hidePaths && L.type === 'path') || (_hideEvents && L.type === 'event')){
+        if(hide){
+          if(L.mesh.userData._capPrevVis === undefined) L.mesh.userData._capPrevVis = L.mesh.visible;
+          L.mesh.visible = false;
+          if(L.labelMesh){
+            if(L.labelMesh.userData._capPrevVis === undefined) L.labelMesh.userData._capPrevVis = L.labelMesh.visible;
+            L.labelMesh.visible = false;
+          }
+          if(L.eventGuide){
+            if(L.eventGuide.userData._capPrevVis === undefined) L.eventGuide.userData._capPrevVis = L.eventGuide.visible;
+            L.eventGuide.visible = false;
+          }
+        } else {
+          if(L.mesh.userData._capPrevVis !== undefined){ L.mesh.visible = L.mesh.userData._capPrevVis; delete L.mesh.userData._capPrevVis; }
+          if(L.labelMesh && L.labelMesh.userData._capPrevVis !== undefined){ L.labelMesh.visible = L.labelMesh.userData._capPrevVis; delete L.labelMesh.userData._capPrevVis; }
+          if(L.eventGuide && L.eventGuide.userData._capPrevVis !== undefined){ L.eventGuide.visible = L.eventGuide.userData._capPrevVis; delete L.eventGuide.userData._capPrevVis; }
+        }
+      }
+    }
+  }
   if(typeof markDirty === 'function') markDirty(8);
 }
 
@@ -8771,6 +8807,16 @@ function _camAnimRenderPanel(){
     <div style="font-size:.72em;color:#777;margin-bottom:8px">
       ${t('Total duration', '総再生時間')}: <span id="cam-anim-total">${camAnim.totalSec.toFixed(2)}</span> s
     </div>
+    <div style="margin-bottom:6px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:.82em;cursor:pointer;margin-bottom:3px">
+        <input type="checkbox" id="ca-hide-paths"
+          style="accent-color:#b594ff;cursor:pointer"> ${t('Hide area paths','区画パスを非表示')}
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.82em;cursor:pointer">
+        <input type="checkbox" id="ca-hide-events"
+          style="accent-color:#b594ff;cursor:pointer"> ${t('Hide event icons','イベントアイコンを非表示')}
+      </label>
+    </div>
     <div style="display:flex;gap:4px">
       <button onclick="window.camAnimPreview()" ${ready ? '' : 'disabled'}
         style="flex:1;padding:5px 6px;background:rgba(120,200,255,.18);
@@ -9250,6 +9296,22 @@ window.captureCamShot = async function(){
   // (the actual lighting) live on env.mesh and stay visible.
   const _sunVizWasVisible = (typeof sunViz !== 'undefined' && sunViz.group) ? sunViz.group.visible : null;
   if(_sunVizWasVisible) sunViz.group.visible = false;
+  // 区画パス / イベントアイコン — チェックON時のみ非表示
+  const _chkHidePaths  = !!(document.getElementById('cm-hide-paths')  ||{}).checked;
+  const _chkHideEvents = !!(document.getElementById('cm-hide-events') ||{}).checked;
+  const _capHiddenLayers = [];
+  if((_chkHidePaths || _chkHideEvents) && typeof layers !== 'undefined'){
+    for(const L of layers){
+      if(!L || !L.mesh) continue;
+      if((_chkHidePaths && L.type === 'path') || (_chkHideEvents && L.type === 'event')){
+        const prev = { layer: L, mesh: L.mesh.visible };
+        L.mesh.visible = false;
+        if(L.labelMesh){ prev.label = L.labelMesh.visible; L.labelMesh.visible = false; }
+        if(L.eventGuide){ prev.guide = L.eventGuide.visible; L.eventGuide.visible = false; }
+        _capHiddenLayers.push(prev);
+      }
+    }
+  }
 
   // Render the capture from the LIVE drawing buffer — the SAME size the preview
   // uses — instead of resizing the renderer to the delivery resolution. Resizing
@@ -9364,6 +9426,12 @@ window.captureCamShot = async function(){
   if(vig) vig.style.opacity = vigOpacity;
   // Restore the 日照 3-D overlay hidden for the capture renders above.
   if(_sunVizWasVisible !== null && typeof sunViz !== 'undefined' && sunViz.group) sunViz.group.visible = _sunVizWasVisible;
+  // Restore path/event layers hidden for the capture.
+  for(const p of _capHiddenLayers){
+    p.layer.mesh.visible = p.mesh;
+    if(p.label !== undefined && p.layer.labelMesh) p.layer.labelMesh.visible = p.label;
+    if(p.guide !== undefined && p.layer.eventGuide) p.layer.eventGuide.visible = p.guide;
+  }
   // Restore camera intrinsics (aspect, fov) for live preview
   camera.aspect = oldAspect;
   camera.fov    = oldFov;
@@ -20242,6 +20310,8 @@ Object.assign(I18N.ja,{
   'csp-capture':'キャプチャ',
   'csp-burnin':'メタデータをバーンイン',
   'csp-burnin-grid':'グリッド/セーフ枠も焼き込み',
+  'csp-hide-paths':'区画パスを非表示',
+  'csp-hide-events':'イベントアイコンを非表示',
   'csp-capture-btn':'撮影 → JPEG',
   'csp-salvage':'カメラ位置をサルベージ',
   'csp-salvage-drop':'以前撮った JPEG をここにドロップ',
@@ -20509,6 +20579,8 @@ Object.assign(I18N.en,{
   'csp-capture':'Capture',
   'csp-burnin':'Burn-in metadata',
   'csp-burnin-grid':'Burn-in grid/safe-area too',
+  'csp-hide-paths':'Hide area paths',
+  'csp-hide-events':'Hide event icons',
   'csp-capture-btn':'Capture → JPEG',
   'csp-salvage':'Salvage Camera State',
   'csp-salvage-drop':'Drop a previously captured JPEG here',
