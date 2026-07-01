@@ -7,6 +7,16 @@
  {
   "out": "src/css/010_style_block.css",
   "start": 20,
+  "end": 732
+ },
+ {
+  "out": "src/css/011_style_block_layer_panel.css",
+  "start": 733,
+  "end": 1158
+ },
+ {
+  "out": "src/css/012_style_block_mobile.css",
+  "start": 1159,
   "end": 1627
  },
  {
@@ -32,6 +42,31 @@
  {
   "out": "template",
   "start": 1874,
+  "end": 1874
+ },
+ {
+  "out": "src/html/010_quality_view_buttons.html",
+  "start": 1875,
+  "end": 1965
+ },
+ {
+  "out": "src/html/020_view_buttons_ar.html",
+  "start": 1966,
+  "end": 2091
+ },
+ {
+  "out": "src/html/030_manual_modal_ja.html",
+  "start": 2092,
+  "end": 2795
+ },
+ {
+  "out": "src/html/040_manual_modal_en.html",
+  "start": 2796,
+  "end": 3163
+ },
+ {
+  "out": "template",
+  "start": 3164,
   "end": 3164
  },
  {
@@ -127,6 +162,36 @@
  {
   "out": "src/js/110_user_manual_modal_opened_from_dropzone_o.js",
   "start": 7687,
+  "end": 7858
+ },
+ {
+  "out": "src/js/111_camera_layer.js",
+  "start": 7859,
+  "end": 8105
+ },
+ {
+  "out": "src/js/112_view_recording.js",
+  "start": 8106,
+  "end": 8399
+ },
+ {
+  "out": "src/js/113_camera_animation.js",
+  "start": 8400,
+  "end": 8720
+ },
+ {
+  "out": "src/js/113b_camera_animation_panel.js",
+  "start": 8721,
+  "end": 9337
+ },
+ {
+  "out": "src/js/114_capture_render.js",
+  "start": 9338,
+  "end": 9596
+ },
+ {
+  "out": "src/js/115_jpeg_metadata_burnin.js",
+  "start": 9597,
   "end": 10009
  },
  {
@@ -177,6 +242,21 @@
  {
   "out": "src/js/210_fly_camera_ue5_viewport_style.js",
   "start": 11649,
+  "end": 11738
+ },
+ {
+  "out": "src/js/211_fly_camera_google_earth_scheme.js",
+  "start": 11739,
+  "end": 11867
+ },
+ {
+  "out": "src/js/212_fly_camera_walk_cycle_clip.js",
+  "start": 11868,
+  "end": 12293
+ },
+ {
+  "out": "src/js/213_fly_camera_avatar_ground.js",
+  "start": 12294,
   "end": 12698
  },
  {
@@ -207,6 +287,21 @@
  {
   "out": "src/js/270_figure_humanoid_wooden_mannequin_with_ri.js",
   "start": 15123,
+  "end": 15719
+ },
+ {
+  "out": "src/js/271_figure_mixamo_loader_ik.js",
+  "start": 15720,
+  "end": 16092
+ },
+ {
+  "out": "src/js/272_figure_bone_gizmo_hover.js",
+  "start": 16093,
+  "end": 16376
+ },
+ {
+  "out": "src/js/273_figure_object_menu_stats.js",
+  "start": 16377,
   "end": 16782
  },
  {
@@ -217,6 +312,21 @@
  {
   "out": "src/js/290_css_reprojection_input_canvas_runs_at_60.js",
   "start": 16861,
+  "end": 17025
+ },
+ {
+  "out": "src/js/291_render_loop.js",
+  "start": 17026,
+  "end": 17638
+ },
+ {
+  "out": "src/js/292_demo_scene_showcase.js",
+  "start": 17639,
+  "end": 18081
+ },
+ {
+  "out": "src/js/293_diag_instrumentation.js",
+  "start": 18082,
   "end": 18552
  },
  {
@@ -227,6 +337,16 @@
  {
   "out": "src/js/310_zip_project_save_load_fflate.js",
   "start": 18674,
+  "end": 19054
+ },
+ {
+  "out": "src/js/311_zip_load_core.js",
+  "start": 19055,
+  "end": 19346
+ },
+ {
+  "out": "src/js/312_project_load_helpers.js",
+  "start": 19347,
   "end": 19702
  },
  {
@@ -272,6 +392,21 @@
  {
   "out": "src/js/400_input.js",
   "start": 20887,
+  "end": 21254
+ },
+ {
+  "out": "src/js/401_input_mouse.js",
+  "start": 21255,
+  "end": 21444
+ },
+ {
+  "out": "src/js/402_input_shared_drag_touch.js",
+  "start": 21445,
+  "end": 21827
+ },
+ {
+  "out": "src/js/403_input_touch_elevation.js",
+  "start": 21828,
   "end": 21876
  },
  {
