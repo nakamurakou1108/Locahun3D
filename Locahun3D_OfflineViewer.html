@@ -249,6 +249,11 @@ body{position:fixed;top:0;left:0;}
        (pointer:coarse) and (any-hover:none) and (max-height:500px){
   #topbar #tb-undo-btn{ display:none !important; }
 }
+/* オンライン版経由(?protected=1)ではデータ保存/エクスポートを無効化。
+   ZIP保存ボタン・3DGSエクスポート・ZIP保存モーダル項目を非表示。 */
+body.protected-mode #tb-save-btn,
+body.protected-mode #em-export-splat,
+body.protected-mode #em-save-zip { display:none !important; }
 @keyframes tb-update-pulse{
   0%,100%{box-shadow:0 0 0 0 rgba(255,180,84,.0);}
   50%   {box-shadow:0 0 0 4px rgba(255,180,84,.18);}
@@ -3908,11 +3913,11 @@ body.ar-active #dz{display:none !important;}
 <div id="export-modal">
   <div class="em-box">
     <div class="em-title" id="em-h-title">📤 エクスポート / 保存</div>
-    <button class="em-btn" onclick="exportSplat();closeExportModal()">
+    <button id="em-export-splat" class="em-btn" onclick="exportSplat();closeExportModal()">
       <span id="em-3dgs">✨ 3DGSエクスポート</span>
       <span class="em-desc" id="em-3dgs-d">3D Gaussian Splatting ファイルをエクスポート (.splat/.ply/.spz)</span>
     </button>
-    <button class="em-btn" onclick="saveProjectZip();closeExportModal()">
+    <button id="em-save-zip" class="em-btn" onclick="saveProjectZip();closeExportModal()">
       <span id="em-zip-save">📦 プロジェクトZIP保存</span> <span style="color:#88ffaa;font-size:.8em" id="em-recommended">★推奨</span>
       <span class="em-desc" id="em-zip-save-d">全ファイル（Splat・3Dモデル・キューブ）をZIPに完全保存</span>
     </button>
@@ -16905,6 +16910,12 @@ const _SPLAT_ACTIVE_MS = (typeof _isMac !== 'undefined' && _isMac) ? 1800 : 4000
 // never ticks and the splats never finish streaming. Zero effect for normal users
 // (flag is off unless explicitly present in the URL).
 const _headless = /[?&]headless=1/.test(location.search);
+const _protected = /[?&]protected=1/.test(location.search);
+if(_protected){
+  document.body.classList.add('protected-mode');
+  window.saveProjectZip = ()=>{ showUndoToast('オンライン閲覧モードではデータ保存できません'); };
+  window.exportSplat    = ()=>{ showUndoToast('オンライン閲覧モードではデータ保存できません'); };
+}
 function animate(now) {
   if(_headless) setTimeout(()=>animate(performance.now()), 16);
   else          requestAnimationFrame(animate);
