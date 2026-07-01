@@ -17,3 +17,10 @@ compatibility_date = "2026-06-22"
 [assets]
 directory = "./viewer-dist"
 binding = "ASSETS"
+
+# デモRAD(交差点)を配信するためのR2バインディング。
+# worker.js の /api/demo-asset/ が ALLOWED_KEYS のオブジェクトだけを
+# Range対応・CORS付きで再配信する（公開r2.dev URLはCORS無し&公開停止済のため）。
+[[r2_buckets]]
+binding = "R2_ASSETS"
+bucket_name = "locahun3d-assets"

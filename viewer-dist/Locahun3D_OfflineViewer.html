@@ -17648,20 +17648,20 @@ else          requestAnimationFrame(animate);
 // ══════════════════════════════════════════════════
 
 // Demo .rad (Spark 2.x streaming RAD format, ~357 MB, ~19.8 M splats).
-// Hosted on R2 and served through the `locahun3d-demo` Worker, which adds
-// the `Access-Control-Allow-Origin: *` headers that Cloudflare's public
-// pub-*.r2.dev subdomain doesn't return on its own. Without that
-// passthrough Spark's chunked Range fetches fail with `TypeError: Failed
-// to fetch` from cross-origin viewers and the `?demo=1` auto-start
-// silently shows a black screen. Worker source + deploy instructions are
-// in `demo-proxy/` next to this file.
+// Served by the viewer's own Cloudflare Worker (worker.js) at
+// /api/demo-asset/, which reads the object straight from the R2 bucket
+// (binding R2_ASSETS → locahun3d-assets) and re-emits it with Range +
+// `Access-Control-Allow-Origin: *`. We do NOT use the public pub-*.r2.dev
+// URL any more: it returns no CORS headers AND public bucket access has
+// been disabled (401), which is why the demo silently showed a black
+// screen — Spark's chunked Range fetches failed. Handler + whitelist are
+// in worker.js (DEMO_ALLOWED_KEYS / handleDemoAsset). The old demo-proxy/
+// Worker (which proxied the now-dead public URL) is obsolete.
 //
-// TODO(2026-05): after `wrangler deploy` in demo-proxy/, replace the
-// pub-*.r2.dev URL below with the Worker URL, e.g.
-//   https://locahun3d-demo.<account>.workers.dev/Kousaten_ForDemo_point_cloud.rad
-// (or a custom domain once one is attached). The proxy whitelist also
-// needs the filename — see ALLOWED_PATHS in demo-proxy/src/index.js.
-const DEMO_SCENE_URL = 'https://pub-6fe11fc6301a424ba739695a7c4d2dd9.r2.dev/Kousaten_ForDemo_point_cloud.rad';
+// Absolute URL (not relative) so offline copies of this single-file
+// viewer — opened from file://, Dropbox, or any other origin — can still
+// stream the demo cross-origin thanks to the CORS headers above.
+const DEMO_SCENE_URL = 'https://viewer.locahun3d.com/api/demo-asset/Kousaten_ForDemo_point_cloud.rad';
 const DEMO_SCENE_LABEL = 'デモシーン(交差点)';
 const DEMO_SCENE_SIZE_MB = 357;
 
